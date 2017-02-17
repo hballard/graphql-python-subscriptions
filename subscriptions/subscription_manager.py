@@ -38,8 +38,8 @@ class RedisPubsub(object):
 
     def wait_and_get_message(self):
         while True:
-            self.pubsub.get_message()
-            gevent.sleep(.001)
+            self.pubsub.get_message() # might need to monkey patch
+            gevent.sleep(.001) # may not need this sleep call
 
 
 class ValidationError(Exception):

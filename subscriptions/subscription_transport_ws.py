@@ -17,15 +17,15 @@ GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
 # apollo subscription-transport constructor
 
 
-class ApolloSubscriptionService(WebSocketApplication):
+class ApolloSubscriptionServer(WebSocketApplication):
 
-    def __init__(self, subscription_manager):
+    def __init__(self, subscription_manager, websocket):
         assert subscription_manager, "Must provide\
             'subscription_manager' to websocket app constructor"
         self.subscription_manager = subscription_manager
         self.connection_subscriptions = {}
         self.connection_context = {}
-        super(ApolloSubscriptionService, self).__init__()
+        super(ApolloSubscriptionServer, self).__init__(websocket)
 
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
