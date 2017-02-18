@@ -44,145 +44,150 @@ class ApolloSubscriptionServer(WebSocketApplication):
             on_init_resolve = None
             on_init_reject = None
 
-        def _init_promise_handler(resolve, reject):
+        def init_promise_handler(resolve, reject):
             nonlocal.on_init_resolve = resolve
             nonlocal.on_init_reject = reject
 
-        self.connection_context['init_promise'] = Promise(_init_promise_handler)
+        self.connection_context['init_promise'] = Promise(init_promise_handler)
 
-        try:
-            parsed_message = json.loads(message)
-        except Exception as e:
-            self.send_subscription_fail(
-                None,
-                {'errors': [{'message': str(e)}]}
-            )
-        sub_id = parsed_message.get('id')
-
-        if parsed_message.get('type') == INIT:
-
-            on_connect_promise = Promise.resolve(True)
-            nonlocal.on_init_resolve(on_connect_promise)
-
-            def _init_success_handler(result):
-                if not result:
-                    raise TypeError('Prohibited connection!')
-                return {'type': INIT_SUCCESS}
-
-            self.connection_context['init_promise'].then(
-                _init_success_handler
-            ).catch(
-                lambda error: {
-                    'type': INIT_FAIL,
-                    'error': str(error)}
-            ).then(
-                lambda result: self.send_init_result(result)
-            )
-
-        elif parsed_message.get('type') == SUBSCRIPTION_START:
-
-            def _subscription_start_handler(init_result):
-                base_params = {
-                    'query': parsed_message.get('query'),
-                    'variables': parsed_message.get('variables'),
-                    'operation_name': parsed_message.get('operation_name'),
-                    'context': init_result if isinstance(
-                        init_result, dict) else {},
-                    'format_response': None,
-                    'format_error': None,
-                    'callback': None
-                }
-                promised_params = Promise.resolve(base_params)
-
-                if self.connection_subscriptions[sub_id]:
-                    self.unsubscribe(self.connection_subscriptions[sub_id])
-                    del self.connection_subscriptions[sub_id]
-
-                def _promised_params_handler(params):
-                    if not isinstance(params, dict):
-                        error = 'Invalid params returned from\
-                                OnSubscribe!  Return value must\
-                                be an dict'
-                        self.send_subscription_fail(sub_id, {
-                            'errors': [{'message': error}]
-                        })
-                        raise TypeError(error)
-
-                    def _params_callback(error, result):
-                        if not error:
-                            self.send_subscription_data(sub_id, result)
-                        elif error.errors:
-                            self.send_subscription_data(sub_id, {
-                                'errors': error.errors
-                            })
-                        elif error.message:
-                            self.send_subscription_data(sub_id, {
-                                'errors': [{'message': error.message}]
-                            })
-                        elif error.get('message'):
-                            self.send_subscription_data(sub_id, {
-                                'errors': [{'message': error.get('message')}]
-                            })
-                        else:
-                            self.send_subscription_data(sub_id, {
-                                'errors': [{'message': str(error)}]
-                            })
-
-                    params['callback'] = _params_callback
-
-                    return self.subscription_manager.subscribe(**params)
-
-                def _graphql_sub_id_handler(graphql_sub_id):
-                    self.connection_subscriptions[sub_id] = graphql_sub_id
-                    self.send_subscription_success(sub_id)
-
-                def _error_catch_handler(e):
-                    if e.errors:
-                        self.send_subscription_fail(sub_id, {
-                            'errors': e.errors
-                        })
-                    elif e.message:
-                        self.send_subscription_fail(sub_id, {
-                            'errors': [{'message': e.message}]
-                        })
-                    elif e.get('message'):
-                        self.send_subscription_fail(sub_id, {
-                            'errors': [{'message': e.get('message')}]
-                        })
-                    else:
-                        self.send_subscription_fail(sub_id, {
-                            'errors': [{'message': str(e)}]
-                        })
-
-                promised_params.then(
-                    _promised_params_handler
-                ).then(
-                    _graphql_sub_id_handler
-                ).catch(
-                    _error_catch_handler
+        def on_message_return_handler(msg):
+            try:
+                parsed_message = json.loads(message)
+            except Exception as e:
+                self.send_subscription_fail(
+                    None,
+                    {'errors': [{'message': str(e)}]}
                 )
 
-            self.connection_context['init_promise'].then(
-                _init_promise_handler)
+            sub_id = parsed_message.get('id')
 
-        elif parsed_message.get('type') == SUBSCRIPTION_END:
+            if parsed_message.get('type') == INIT:
 
-            def _subscription_end_handler(result):
-                if isinstance(self.connection_subscriptions[sub_id], None):
-                    self.unsubscribe(self.connection_subscriptions[sub_id])
-                    del self.connection_subscriptions[sub_id]
+                on_connect_promise = Promise.resolve(True)
 
-            self.connection_context['init_promise'].then(
-                _subscription_end_handler
-            )
+                nonlocal.on_init_resolve(on_connect_promise)
 
-        else:
+                def init_success_promise_handler(result):
+                    if not result:
+                        raise TypeError('Prohibited connection!')
+                    return {'type': INIT_SUCCESS}
 
-            self.send_subscription_fail(sub_id, {
-                'errors': [{
-                    'message': 'Invalid message type!'
-                }]
-            })
+                self.connection_context['init_promise'].then(
+                    init_success_promise_handler
+                ).catch(
+                    lambda error: {
+                        'type': INIT_FAIL,
+                        'error': str(error)}
+                ).then(
+                    lambda result: self.send_init_result(result)
+                )
+
+            elif parsed_message.get('type') == SUBSCRIPTION_START:
+
+                def subscription_start_promise_handler(init_result):
+                    base_params = {
+                        'query': parsed_message.get('query'),
+                        'variables': parsed_message.get('variables'),
+                        'operation_name': parsed_message.get('operation_name'),
+                        'context': init_result if isinstance(
+                            init_result, dict) else {},
+                        'format_response': None,
+                        'format_error': None,
+                        'callback': None
+                    }
+                    promised_params = Promise.resolve(base_params)
+
+                    if self.connection_subscriptions[sub_id]:
+                        self.unsubscribe(self.connection_subscriptions[sub_id])
+                        del self.connection_subscriptions[sub_id]
+
+                    def promised_params_handler(params):
+                        if not isinstance(params, dict):
+                            error = 'Invalid params returned from\
+                                    OnSubscribe!  Return value must\
+                                    be an dict'
+                            self.send_subscription_fail(sub_id, {
+                                'errors': [{'message': error}]
+                            })
+                            raise TypeError(error)
+
+                        def params_callback(error, result):
+                            if not error:
+                                self.send_subscription_data(sub_id, result)
+                            elif error.errors:
+                                self.send_subscription_data(sub_id, {
+                                    'errors': error.errors
+                                })
+                            elif error.message:
+                                self.send_subscription_data(sub_id, {
+                                    'errors': [{'message': error.message}]
+                                })
+                            elif error.get('message'):
+                                self.send_subscription_data(sub_id, {
+                                    'errors': [{'message': error.get('message')}]
+                                })
+                            else:
+                                self.send_subscription_data(sub_id, {
+                                    'errors': [{'message': str(error)}]
+                                })
+
+                        params['callback'] = params_callback
+
+                        return self.subscription_manager.subscribe(**params)
+
+                    def graphql_sub_id_promise_handler(graphql_sub_id):
+                        self.connection_subscriptions[sub_id] = graphql_sub_id
+                        self.send_subscription_success(sub_id)
+
+                    def error_catch_handler(e):
+                        if e.errors:
+                            self.send_subscription_fail(sub_id, {
+                                'errors': e.errors
+                            })
+                        elif e.message:
+                            self.send_subscription_fail(sub_id, {
+                                'errors': [{'message': e.message}]
+                            })
+                        elif e.get('message'):
+                            self.send_subscription_fail(sub_id, {
+                                'errors': [{'message': e.get('message')}]
+                            })
+                        else:
+                            self.send_subscription_fail(sub_id, {
+                                'errors': [{'message': str(e)}]
+                            })
+
+                    promised_params.then(
+                        promised_params_handler
+                    ).then(
+                        graphql_sub_id_promise_handler
+                    ).catch(
+                        error_catch_handler
+                    )
+
+                self.connection_context['init_promise'].then(
+                    subscription_start_promise_handler)
+
+            elif parsed_message.get('type') == SUBSCRIPTION_END:
+
+                def subscription_end_promise_handler(result):
+                    if self.connection_subscriptions[sub_id]:
+                        self.unsubscribe(self.connection_subscriptions[sub_id])
+                        del self.connection_subscriptions[sub_id]
+
+                self.connection_context['init_promise'].then(
+                    subscription_end_promise_handler
+                )
+
+            else:
+
+                self.send_subscription_fail(sub_id, {
+                    'errors': [{
+                        'message': 'Invalid message type!'
+                    }]
+                })
+
+        return on_message_return_handler()
 
     def send_subscription_data(self, sub_id, payload):
         message = {
@@ -201,7 +206,10 @@ class ApolloSubscriptionServer(WebSocketApplication):
         self.ws.send(json.dumps(message))
 
     def send_subscription_success(self, sub_id):
-        message = {'type': SUBSCRIPTION_SUCCESS, 'id': sub_id}
+        message = {
+            'type': SUBSCRIPTION_SUCCESS,
+            'id': sub_id
+        }
         self.ws.send(json.dumps(message))
 
     def send_init_result(self, result):
