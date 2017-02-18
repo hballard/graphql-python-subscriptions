@@ -9,6 +9,7 @@ from graphql.language.ast import OperationDefinition
 class RedisPubsub(object):
 
     def __init__(self, host='localhost', port=6379, *args, **kwargs):
+        redis.connection.socket = gevent.socket  # may not need this -- test
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
         self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
         self.subscriptions = {}
@@ -38,8 +39,8 @@ class RedisPubsub(object):
 
     def wait_and_get_message(self):
         while True:
-            self.pubsub.get_message() # might need to monkey patch
-            gevent.sleep(.001) # may not need this sleep call
+            self.pubsub.get_message()
+            gevent.sleep(.001)  # may not need this sleep call - test
 
 
 class ValidationError(Exception):
@@ -91,7 +92,7 @@ class SubscriptionManager(object):
 
                     arg_definition = [arg_def for arg_def in
                                       fields[subscription_name].args if
-                                      arg_def == arg.name.value][0]
+                                      arg_def.name == arg.name.value][0]
 
                     args[arg_definition.name] = value_from_ast(
                         arg.value,
@@ -131,17 +132,23 @@ class SubscriptionManager(object):
             )
 
             def on_message(root_value):
-                if isinstance(context, FunctionType):
-                    context_promise = Promise(
-                        lambda resolve: resolve(context())
-                    )
-                else:
-                    context_promise = Promise.resolve(context)
 
-                def context_promise_then(context):
-                    if not filter_func(root_value, context):
+                def context_promise_handler():
+                    if isinstance(context, FunctionType):
+                        return context()
+                    else:
+                        return context
+
+                def filter_func_promise_handler(context):
+                    return Promise.all([
+                        context,
+                        filter_func(root_value, context)
+                    ])
+
+                def context_do_execute_handler(result):
+                    root_value, do_execute = result
+                    if not do_execute:
                         return
-
                     execute(
                         self.schema,
                         parsed_query,
@@ -149,30 +156,31 @@ class SubscriptionManager(object):
                         context,
                         variables,
                         operation_name
+                    ).then(
+                        lambda data: callback(None, data)
                     )
 
-                context_promise.then(
-                    context_promise_then
+                return Promise.resolve(
                 ).then(
-                    lambda data: callback(None, data)
+                    context_promise_handler
+                ).then(
+                    filter_func_promise_handler
+                ).then(
+                    context_do_execute_handler
                 ).catch(
                     lambda error: callback(error)
                 )
 
-            subs_promise = Promise(
-                lambda resolve: resolve(self.pubsub.subscribe(
+            subscription_promises.append(
+                self.pubsub.subscribe(
                     trigger_name,
                     on_message,
                     channel_options
-                ))
+                ).then(
+                    lambda id: self.subscriptions[
+                        external_subscription_id].append(id)
+                )
             )
-
-            subs_promise.then(
-                lambda id: self.subscriptions[
-                    external_subscription_id].append(id)
-            )
-
-            subscription_promises.append(subs_promise)
 
         return Promise.all(subscription_promises).then(
             lambda result: external_subscription_id
