@@ -31,15 +31,18 @@ class ApolloSubscriptionServer(WebSocketApplication):
         self.subscription_manager.unsubscribe(graphql_sub_id)
 
     def on_open(self):
-        if self.ws.protocol is None or GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol:
+        if self.ws.protocol is None or (GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol):
             self.ws.close(1002)
 
-    def on_close(self):
+    def on_close(self, reason):
         for sub_id in self.connection_subscriptions.keys():
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
 
-    def on_message(self, message):
+    def on_message(self, msg):
+        if msg is None:
+            return
+
         class nonlocal:
             on_init_resolve = None
             on_init_reject = None
@@ -50,7 +53,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
 
         self.connection_context['init_promise'] = Promise(init_promise_handler)
 
-        def on_message_return_handler(msg):
+        def on_message_return_handler(message):
             try:
                 parsed_message = json.loads(message)
             except Exception as e:
@@ -187,7 +190,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                     }]
                 })
 
-        return on_message_return_handler()
+        return on_message_return_handler(msg)
 
     def send_subscription_data(self, sub_id, payload):
         message = {
