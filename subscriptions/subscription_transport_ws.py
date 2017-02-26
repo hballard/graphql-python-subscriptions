@@ -67,7 +67,6 @@ class ApolloSubscriptionServer(WebSocketApplication):
             if parsed_message.get('type') == INIT:
 
                 on_connect_promise = Promise.resolve(True)
-
                 nonlocal.on_init_resolve(on_connect_promise)
 
                 def init_success_promise_handler(result):
@@ -100,7 +99,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                     }
                     promised_params = Promise.resolve(base_params)
 
-                    if self.connection_subscriptions[sub_id]:
+                    if self.connection_subscriptions.get(sub_id):
                         self.unsubscribe(self.connection_subscriptions[sub_id])
                         del self.connection_subscriptions[sub_id]
 
@@ -168,15 +167,25 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         error_catch_handler
                     )
 
+                # Promise from init statement (line 54)
+                # seems to reset between if statements
+                # not sure if this behavior is correct or
+                # not per promises A spec...need to
+                # investigate
+                nonlocal.on_init_resolve(Promise.resolve(True))
+
                 self.connection_context['init_promise'].then(
                     subscription_start_promise_handler)
 
             elif parsed_message.get('type') == SUBSCRIPTION_END:
 
                 def subscription_end_promise_handler(result):
-                    if self.connection_subscriptions[sub_id]:
+                    if self.connection_subscriptions.get(sub_id):
                         self.unsubscribe(self.connection_subscriptions[sub_id])
                         del self.connection_subscriptions[sub_id]
+
+                # same rationale as above
+                nonlocal.on_init_resolve(Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
                     subscription_end_promise_handler
@@ -216,7 +225,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
         self.ws.send(json.dumps(message))
 
     def send_init_result(self, result):
-        self.ws.send(json.dumps(result))  # may need to use promise here
+        self.ws.send(json.dumps(result))
         if result.get('type') == INIT_FAIL:
             self.ws.close(1011)
 

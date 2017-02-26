@@ -1,5 +1,6 @@
 import redis
 import gevent
+import json
 from types import FunctionType
 from promise import Promise
 from graphql import parse, validate, specified_rules, value_from_ast, execute
@@ -9,7 +10,7 @@ from graphql.language.ast import OperationDefinition
 class RedisPubsub(object):
 
     def __init__(self, host='localhost', port=6379, *args, **kwargs):
-        redis.connection.socket = gevent.socket  # may not need this -- test
+        redis.connection.socket = gevent.socket
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
         self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
         self.subscriptions = {}
@@ -17,15 +18,16 @@ class RedisPubsub(object):
         self.greenlet = None
 
     def publish(self, trigger_name, message):
-        self.redis.publish(trigger_name, message)
+        self.redis.publish(trigger_name, json.dumps(message))
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
-        trigger = {}
-        trigger[trigger_name] = on_message_handler
-        self.pubsub.subscribe(**trigger)
+        self.pubsub.subscribe(trigger_name)
         if not self.greenlet:
-            self.greenlet = gevent.spawn(self.wait_and_get_message)
+            self.greenlet = gevent.spawn(
+                self.wait_and_get_message,
+                on_message_handler
+            )
         self.sub_id_counter += 1
         self.subscriptions[self.sub_id_counter] = trigger_name
         return Promise.resolve(self.sub_id_counter)
@@ -37,9 +39,11 @@ class RedisPubsub(object):
         if not self.subscriptions:
             self.greenlet = self.greenlet.kill()
 
-    def wait_and_get_message(self):
+    def wait_and_get_message(self, on_message_handler):
         while True:
-            self.pubsub.get_message()
+            message = self.pubsub.get_message()
+            if message:
+                on_message_handler(json.loads(message['data']))
             gevent.sleep(.001)  # may not need this sleep call - test
 
 
@@ -69,7 +73,7 @@ class SubscriptionManager(object):
             self.schema,
             parsed_query,
             # TODO: Need to create/add subscriptionHasSingleRootField
-            # rule
+            # rule from apollo subscription manager package
             rules=specified_rules
         )
 
@@ -86,21 +90,23 @@ class SubscriptionManager(object):
                 root_field = definition.selection_set.selections[0]
                 subscription_name = root_field.name.value
 
-                fields = self.schema.get_subscription_type().get_fields()
+                fields = self.schema.get_subscription_type().fields
 
                 for arg in root_field.arguments:
 
-                    arg_definition = [arg_def for arg_def in
-                                      fields[subscription_name].args if
-                                      arg_def.name == arg.name.value][0]
+                    arg_definition = [
+                        arg_def for _, arg_def in
+                        fields.get(subscription_name).args.iteritems() if
+                        arg_def.out_name == arg.name.value
+                    ][0]
 
-                    args[arg_definition.name] = value_from_ast(
+                    args[arg_definition.out_name] = value_from_ast(
                         arg.value,
                         arg_definition.type,
                         variables=variables
                     )
 
-        if self.setup_funcs[subscription_name]:
+        if self.setup_funcs.get(subscription_name):
             trigger_map = self.setup_funcs[subscription_name](
                 query,
                 operation_name,
@@ -126,14 +132,14 @@ class SubscriptionManager(object):
                 'channel_options',
                 {}
             )
-            filter_func = trigger_map[trigger_name].get(
-                'filter_func',
-                True
+            filter = trigger_map[trigger_name].get(
+                'filter',
+                lambda arg1, arg2: True
             )
 
             def on_message(root_value):
 
-                def context_promise_handler():
+                def context_promise_handler(result):
                     if isinstance(context, FunctionType):
                         return context()
                     else:
@@ -142,11 +148,11 @@ class SubscriptionManager(object):
                 def filter_func_promise_handler(context):
                     return Promise.all([
                         context,
-                        filter_func(root_value, context)
+                        filter(root_value, context)
                     ])
 
                 def context_do_execute_handler(result):
-                    root_value, do_execute = result
+                    context, do_execute = result
                     if not do_execute:
                         return
                     execute(
@@ -156,17 +162,18 @@ class SubscriptionManager(object):
                         context,
                         variables,
                         operation_name
-                    ).then(
-                        lambda data: callback(None, data)
                     )
 
                 return Promise.resolve(
+                    True
                 ).then(
                     context_promise_handler
                 ).then(
                     filter_func_promise_handler
                 ).then(
                     context_do_execute_handler
+                ).then(
+                    lambda data: callback(None, data)
                 ).catch(
                     lambda error: callback(error)
                 )
