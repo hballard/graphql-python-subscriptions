@@ -115,7 +115,9 @@ class ApolloSubscriptionServer(WebSocketApplication):
 
                         def params_callback(error, result):
                             if not error:
-                                self.send_subscription_data(sub_id, result)
+                                self.send_subscription_data(sub_id, {
+                                    'data': result.data
+                                })
                             elif error.errors:
                                 self.send_subscription_data(sub_id, {
                                     'errors': error.errors
@@ -123,10 +125,6 @@ class ApolloSubscriptionServer(WebSocketApplication):
                             elif error.message:
                                 self.send_subscription_data(sub_id, {
                                     'errors': [{'message': error.message}]
-                                })
-                            elif error.get('message'):
-                                self.send_subscription_data(sub_id, {
-                                    'errors': [{'message': error.get('message')}]
                                 })
                             else:
                                 self.send_subscription_data(sub_id, {

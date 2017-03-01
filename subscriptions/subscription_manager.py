@@ -12,7 +12,7 @@ class RedisPubsub(object):
     def __init__(self, host='localhost', port=6379, *args, **kwargs):
         redis.connection.socket = gevent.socket
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
-        self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
+        self.pubsub = self.redis.pubsub()
         self.subscriptions = {}
         self.sub_id_counter = 0
         self.greenlet = None
@@ -22,29 +22,44 @@ class RedisPubsub(object):
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
-        self.pubsub.subscribe(trigger_name)
+        try:
+            if trigger_name not in self.subscriptions.values()[0]:
+                self.pubsub.subscribe(trigger_name)
+        except IndexError:
+            self.pubsub.subscribe(trigger_name)
+        self.subscriptions[self.sub_id_counter] = [
+            trigger_name,
+            on_message_handler
+        ]
+        self.sub_id_counter += 1
         if not self.greenlet:
             self.greenlet = gevent.spawn(
-                self.wait_and_get_message,
-                on_message_handler
+                self.wait_and_get_message
             )
-        self.sub_id_counter += 1
-        self.subscriptions[self.sub_id_counter] = trigger_name
         return Promise.resolve(self.sub_id_counter)
 
     def unsubscribe(self, sub_id):
-        trigger_name = self.subscriptions[sub_id]
+        trigger_name, on_message_handler = self.subscriptions[sub_id]
         del self.subscriptions[sub_id]
-        self.pubsub.unsubscribe(trigger_name)
+        try:
+            if trigger_name not in self.subscriptions.values()[0]:
+                self.pubsub.subscribe(trigger_name)
+        except IndexError:
+            self.pubsub.subscribe(trigger_name)
         if not self.subscriptions:
             self.greenlet = self.greenlet.kill()
 
-    def wait_and_get_message(self, on_message_handler):
+    def wait_and_get_message(self):
         while True:
-            message = self.pubsub.get_message()
+            message = self.pubsub.get_message(ignore_subscribe_messages=True)
             if message:
-                on_message_handler(json.loads(message['data']))
+                self.handle_message(message)
             gevent.sleep(.001)  # may not need this sleep call - test
+
+    def handle_message(self, message):
+        for sub_id, trigger_map in self.subscriptions.iteritems():
+            if trigger_map[0] == message['channel']:
+                trigger_map[1](json.loads(message['data']))
 
 
 class ValidationError(Exception):
@@ -155,14 +170,15 @@ class SubscriptionManager(object):
                     context, do_execute = result
                     if not do_execute:
                         return
-                    execute(
-                        self.schema,
-                        parsed_query,
-                        root_value,
-                        context,
-                        variables,
-                        operation_name
-                    )
+                    else:
+                        return execute(
+                            self.schema,
+                            parsed_query,
+                            root_value,
+                            context,
+                            variables,
+                            operation_name
+                        )
 
                 return Promise.resolve(
                     True
@@ -173,9 +189,9 @@ class SubscriptionManager(object):
                 ).then(
                     context_do_execute_handler
                 ).then(
-                    lambda data: callback(None, data)
+                    lambda result: callback(None, result)
                 ).catch(
-                    lambda error: callback(error)
+                    lambda error: callback(error, None)
                 )
 
             subscription_promises.append(
