@@ -1,4 +1,5 @@
 import json
+import gevent
 from geventwebsocket import WebSocketApplication
 from promise import Promise
 
@@ -13,31 +14,59 @@ INIT_SUCCESS = 'init_success'
 INIT_FAIL = 'init_fail'
 GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
 
-# TODO: Implement 'keep_alive' message sent to client that is in
-# apollo subscription-transport constructor
-
 
 class ApolloSubscriptionServer(WebSocketApplication):
 
-    def __init__(self, subscription_manager, websocket):
+    def __init__(self, subscription_manager, websocket, keep_alive=None,
+                 on_subscribe=None, on_unsubscribe=None, on_connect=None,
+                 on_disconnect=None):
+
         assert subscription_manager, "Must provide\
             'subscription_manager' to websocket app constructor"
+
         self.subscription_manager = subscription_manager
+        self.on_subscribe = on_subscribe
+        self.on_unsubscribe = on_unsubscribe
+        self.on_connect = on_connect
+        self.on_disconnect = on_disconnect
+        self.keep_alive = keep_alive
         self.connection_subscriptions = {}
         self.connection_context = {}
+
         super(ApolloSubscriptionServer, self).__init__(websocket)
+
+    def timer(self, callback, period):
+        while True:
+            callback()
+            gevent.sleep(period)
 
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
+
+        if self.on_unsubscribe:
+            self.on_unsubscribe(self.ws)
 
     def on_open(self):
         if self.ws.protocol is None or (GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol):
             self.ws.close(1002)
 
+        def keep_alive_callback():
+            if not self.ws.closed:
+                self.send_keep_alive()
+            else:
+                gevent.kill(keep_alive_timer)
+
+        if self.keep_alive:
+            keep_alive_timer = gevent.spawn(self.timer, keep_alive_callback,
+                                            self.keep_alive)
+
     def on_close(self, reason):
-        for sub_id in self.connection_subscriptions.keys():
+        for sub_id in self.connection_subscriptions.viewkeys():
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
+
+        if self.on_disconnect:
+            self.on_disconnect(self.ws)
 
     def on_message(self, msg):
         if msg is None:
@@ -67,6 +96,12 @@ class ApolloSubscriptionServer(WebSocketApplication):
             if parsed_message.get('type') == INIT:
 
                 on_connect_promise = Promise.resolve(True)
+
+                if self.on_connect:
+                    on_connect_promise = Promise.resolve(self.on_connect(
+                        parsed_message.get('payload'), self.ws
+                    ))
+
                 nonlocal.on_init_resolve(on_connect_promise)
 
                 def init_success_promise_handler(result):
@@ -98,6 +133,13 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         'callback': None
                     }
                     promised_params = Promise.resolve(base_params)
+
+                    if self.on_subscribe:
+                        promised_params = Promise.resolve(self.on_subscribe(
+                            parsed_message,
+                            base_params,
+                            self.ws
+                        ))
 
                     if self.connection_subscriptions.get(sub_id):
                         self.unsubscribe(self.connection_subscriptions[sub_id])

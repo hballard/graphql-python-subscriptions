@@ -54,7 +54,7 @@ class RedisPubsub(object):
             message = self.pubsub.get_message(ignore_subscribe_messages=True)
             if message:
                 self.handle_message(message)
-            gevent.sleep(.001)  # may not need this sleep call - test
+            gevent.sleep(.001)
 
     def handle_message(self, message):
         for sub_id, trigger_map in self.subscriptions.iteritems():
@@ -142,7 +142,7 @@ class SubscriptionManager(object):
         self.subscriptions[external_subscription_id] = []
         subscription_promises = []
 
-        for trigger_name in trigger_map.keys():
+        for trigger_name in trigger_map.viewkeys():
             channel_options = trigger_map[trigger_name].get(
                 'channel_options',
                 {}
