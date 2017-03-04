@@ -1,6 +1,6 @@
 import redis
 import gevent
-import json
+import cPickle
 from types import FunctionType
 from promise import Promise
 from graphql import parse, validate, specified_rules, value_from_ast, execute
@@ -18,7 +18,7 @@ class RedisPubsub(object):
         self.greenlet = None
 
     def publish(self, trigger_name, message):
-        self.redis.publish(trigger_name, json.dumps(message))
+        self.redis.publish(trigger_name, cPickle.dumps(message))
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
@@ -59,7 +59,7 @@ class RedisPubsub(object):
     def handle_message(self, message):
         for sub_id, trigger_map in self.subscriptions.iteritems():
             if trigger_map[0] == message['channel']:
-                trigger_map[1](json.loads(message['data']))
+                trigger_map[1](cPickle.loads(message['data']))
 
 
 class ValidationError(Exception):
