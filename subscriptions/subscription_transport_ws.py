@@ -61,7 +61,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                                             self.keep_alive)
 
     def on_close(self, reason):
-        for sub_id in self.connection_subscriptions.viewkeys():
+        for sub_id in self.connection_subscriptions.keys():
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
 
