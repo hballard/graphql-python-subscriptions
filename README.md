@@ -11,5 +11,5 @@ Very initial implementation.  Currently only works with Python 2.  No tests yet.
 
 ## Installation
 ```
-$ pip install graphql-python-subscriptions
+$ pip install graphql-subscriptions
 ```

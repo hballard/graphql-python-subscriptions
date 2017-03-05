@@ -21,4 +21,4 @@ Installation
 
 ::
 
-    $ pip install graphql-python-subscriptions
+    $ pip install graphql-subscriptions
