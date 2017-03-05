@@ -8,3 +8,8 @@ syrusakbary/promise python implementation to mirror the logic in the apollo-grap
 Meant to be used in conjunction with graphql-python / graphene server and apollo-graphql client.
 
 Very initial implementation.  Currently only works with Python 2.  No tests yet.
+
+## Installation
+```
+$ pip install graphql-python-subscriptions
+```
