@@ -47,7 +47,8 @@ class ApolloSubscriptionServer(WebSocketApplication):
             self.on_unsubscribe(self.ws)
 
     def on_open(self):
-        if self.ws.protocol is None or (GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol):
+        if self.ws.protocol is None or (GRAPHQL_SUBSCRIPTIONS not in
+                                        self.ws.protocol):
             self.ws.close(1002)
 
         def keep_alive_callback():
