@@ -1,9 +1,0 @@
-appdirs==1.4.0
-gevent==1.2.1
-gevent-websocket==0.9.5
-greenlet==0.4.12
-packaging==16.8
-Promises==0.6.27
-pyparsing==2.1.10
-redis==2.10.5
-six==1.10.0
