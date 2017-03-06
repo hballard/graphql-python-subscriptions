@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='graphql-subscriptions',
-    version='0.1.3',
+    version='0.1.4',
     author='Heath Ballard',
     author_email='heath.ballard@gmail.com',
     description=('A port of apollo-graphql subscriptions for python, using\
