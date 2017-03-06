@@ -2,7 +2,7 @@
 #### (Work in Progress!)
 A port of apollographql subscriptions for python, using gevent websockets and redis
 
-This is a implementation of apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) in Python. It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of 
+This is a implementation of apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) in Python. It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of
 [syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
 
 Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.
@@ -25,10 +25,10 @@ $ pip install graphql-subscriptions
 #### Methods
 - `publish(trigger_name, message)`: Trigger name is a subscription
   or pubsub channel; message is the mutation object or message that will end
-  up being passed to the subscription root_value; this method will be called inside of 
+  up being passed to the subscription root_value; this method will be called inside of
   mutation resolve function
 - `subscribe(trigger_name, on_message_handler, options)`: Trigger name
-  is a subscription or pubsub channel; on_message_handler is the callback 
+  is a subscription or pubsub channel; on_message_handler is the callback
   that will be triggered on each mutation; this method is called by the subscription
   manager
 - `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being
@@ -37,7 +37,7 @@ $ pip install graphql-subscriptions
 - `wait_and_get_message()`: Called by the subscribe method during the first
   subscription for server; run in a separate greenlet and calls Redis `get_message()`
   method to constantly poll for new messages on pubsub channels
-- `handle_message(message)`: Called by pubsub when a message is 
+- `handle_message(message)`: Called by pubsub when a message is
   received on a subscribed channel; will check all existing pubsub subscriptons and
   then  calls `on_message_handler()` for all matches
 
@@ -95,8 +95,11 @@ $ pip install graphql-subscriptions
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_sockets import Sockets
-from graphql_subscriptions import SubscriptionManager, RedisPubsub
-from graphql_subscriptions import ApolloSubscriptionServer
+from graphql_subscriptions import (
+    SubscriptionManager,
+    RedisPubsub,
+    ApolloSubscriptionServer
+)
 
 app = Flask(__name__)
 
@@ -118,7 +121,7 @@ schema = graphene.Schema(
 # instantiate subscription manager object--passing in schema and pubsub
 subscription_mgr = SubscriptionManager(schema, pubsub)
 
-# using Flask Sockets here, on each new connection instantiate a 
+# using Flask Sockets here, on each new connection instantiate a
 # subscription app / server--passing in subscription manger and websocket
 @sockets.route('/socket')
 def socket_channel(websocket):
@@ -128,8 +131,8 @@ def socket_channel(websocket):
 
 if __name__ == "__main__":
 
-    # using gevent webserver here so multiple connections can be 
-    # maintained concurrently -- gevent websocket spawns a new 
+    # using gevent webserver here so multiple connections can be
+    # maintained concurrently -- gevent websocket spawns a new
     # greenlet for each request and forwards to flask app or socket app
     # depending on request type
     from geventwebsocket import WebSocketServer
