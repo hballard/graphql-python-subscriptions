@@ -53,7 +53,7 @@ $ pip install graphql-subscriptions
 
 
   example:
-  ```
+  ```python
   def new_user(**kwargs):
       args = kwargs.get('args')
       return {
@@ -91,7 +91,7 @@ $ pip install graphql-subscriptions
 ## Example Usage
 #### Server (using Flask and Flask-Sockets):
 
-```
+```python
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_sockets import Sockets
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 Of course on the server you have to "publish" each time you have a mutation (in this case to a redis channel).  That would look something like this (using graphene / sql-alchemy):
 
 
-```
+```python
 class AddUser(graphene.ClientIDMutation):
 
     class Input:
@@ -181,7 +181,7 @@ class Subscription(graphene.ObjectType):
 #### Client (using Apollo Client library):
 First create create network interface and and client instances and
 then wrap them in a subscription client instance
-```
+```js
 import ReactDOM from 'react-dom'
 import { ApolloProvider } from 'react-apollo'
 import ApolloClient, { createNetworkInterface } from 'apollo-client'
@@ -216,7 +216,7 @@ ReactDOM.render(
 ```
 Build a simple component and then call subscribeToMore method on the
 returned data object from the inital graphql query
-```
+```js
 
 import React from 'react'
 import { graphql } from 'react-apollo'
