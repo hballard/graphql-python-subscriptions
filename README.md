@@ -15,7 +15,7 @@ $ pip install graphql-subscriptions
 ```
 
 ## API
-### RedisPubsub(self, host='localhost', port=6379, \*args, **kwargs)
+### RedisPubsub(host='localhost', port=6379, \*args, **kwargs)
 #### Arguments
 - `host`: Redis server instance url or IP
 - `port`: Redis server port
@@ -23,25 +23,25 @@ $ pip install graphql-subscriptions
   to Redis-py constructor
 
 #### Methods
-- `publish(self, trigger_name, message)`: Trigger name is a subscription
+- `publish(trigger_name, message)`: Trigger name is a subscription
   or pubsub channel; message is the mutation object or message that will end
   up being passed to the subscription root_value; this method will be called inside of 
   mutation resolve function
-- `subscribe(self, trigger_name, on_message_handler, options)`: Trigger name
+- `subscribe(trigger_name, on_message_handler, options)`: Trigger name
   is a subscription or pubsub channel; on_message_handler is the callback 
   that will be triggered on each mutation; this method is called by the subscription
   manager
-- `unsubscribe(self, sub_id)`: Sub_id is the subscription ID that is being
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being
   tracked by the pubsub instance -- it is returned from the `subscribe` method
   and called by the subscription manager
-- `wait_and_get_message(self)`: Called by the subscribe method during the first
+- `wait_and_get_message()`: Called by the subscribe method during the first
   subscription for server; run in a separate greenlet and calls Redis `get_message()`
   method to constantly poll for new messages on pubsub channels
-- `handle_message(self, message)`: Called by pubsub when a message is 
+- `handle_message(message)`: Called by pubsub when a message is 
   received on a subscribed channel; will check all existing pubsub subscriptons and
   then  calls `on_message_handler()` for all matches
 
-### SubscriptionManager(self, schema, pubsub, setup_funcs={})
+### SubscriptionManager(schema, pubsub, setup_funcs={})
 #### Arguments
 - `schema`: graphql schema instance
 - `pubsub`: any pubsub instance with publish, subscribe, and unsubscribe
@@ -66,19 +66,19 @@ $ pip install graphql-subscriptions
   ```
 
 #### Methods
-- `publish(self, trigger_name, payload)`: Trigger name is the subscription
+- `publish(trigger_name, payload)`: Trigger name is the subscription
   or pubsub channel; payload is the mutation object or message that will
   end up being passed to the subscription root_value; method called inside of
   mutation resolve function
-- `subscribe(self, query, operation_name, callback, variables, context,
+- `subscribe(query, operation_name, callback, variables, context,
   format_error, format_response)`: Called by ApolloSubscriptionServer upon
   receiving a new subscription from a websocket.  Arguments are parsed by
   ApolloSubscriptionServer from graphql subscription query
-- `unsubscribe(self, sub_id)`: Sub_id is the subscription ID that is being
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being
   tracked by the subscription manager instance -- returned from the
   `subscribe()` method and called by the ApolloSubscriptionServer
 
-### ApolloSubscriptionServer(self, subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
+### ApolloSubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
 #### Arguments
 - `subscription_manager`: TODO
 - `websocket`: TODO
