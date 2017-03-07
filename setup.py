@@ -1,5 +1,10 @@
 from setuptools import setup, find_packages
 
+try:
+    import pypandoc
+    long_description = pypandoc.convert('README.md', 'rst')
+except(IOError, ImportError):
+    long_description = open('README.md').read()
 
 setup(
     name='graphql-subscriptions',
@@ -12,7 +17,7 @@ setup(
     keywords='graphql websockets concurrent subscriptions',
     url='https://github.com/hballard/graphql-python-subscriptions',
     packages=find_packages(exclude=['tests']),
-    long_description=open('README.rst').read(),
+    long_description=long_description,
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
