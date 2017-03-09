@@ -2,12 +2,11 @@
 #### (Work in Progress!)
 A port of apollographql subscriptions for python, using gevent websockets and redis
 
-This is a implementation of apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) in Python. It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of
-[syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
+This is a implementation of apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) in Python.  It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of [syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
 
-Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.
+Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.  The api is below, but if you want more information, consult the apollo graphql libraries referenced above.
 
-Very initial implementation.  Currently only works with Python 2.  No tests yet.
+Initial implementation.  Currently only works with Python 2.  No tests yet.
 
 ## Installation
 ```
@@ -17,40 +16,22 @@ $ pip install graphql-subscriptions
 ## API
 ### RedisPubsub(host='localhost', port=6379, \*args, **kwargs)
 #### Arguments
-- `host`: Redis server instance url or IP
-- `port`: Redis server port
-- `args, kwargs`: additional position and keyword args will be passed
-  to Redis-py constructor
+- `host`: Redis server instance url or IP (optional)
+- `port`: Redis server port (optional)
+- `args, kwargs`: Any additional position and keyword args will be passed to Redis-py constructor (optional)
 
 #### Methods
-- `publish(trigger_name, message)`: Trigger name is a subscription
-  or pubsub channel; message is the mutation object or message that will end
-  up being passed to the subscription root_value; this method will be called inside of
-  mutation resolve function
-- `subscribe(trigger_name, on_message_handler, options)`: Trigger name
-  is a subscription or pubsub channel; on_message_handler is the callback
-  that will be triggered on each mutation; this method is called by the subscription
-  manager
-- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being
-  tracked by the pubsub instance -- it is returned from the `subscribe` method
-  and called by the subscription manager
-- `wait_and_get_message()`: Called by the subscribe method during the first
-  subscription for server; run in a separate greenlet and calls Redis `get_message()`
-  method to constantly poll for new messages on pubsub channels
-- `handle_message(message)`: Called by pubsub when a message is
-  received on a subscribed channel; will check all existing pubsub subscriptons and
-  then  calls `on_message_handler()` for all matches
+- `publish(trigger_name, message)`: Trigger name is a subscription or pubsub channel; message is the mutation object or message that will end up being passed to the subscription as the root_value; this method should be called inside of mutation resolve function
+- `subscribe(trigger_name, on_message_handler, options)`: Trigger name is a subscription or pubsub channel; on_message_handler is the callback that will be triggered on each mutation; this method is called by the subscription manager
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the pubsub instance -- it is returned from the `subscribe` method and called by the subscription manager
+- `wait_and_get_message()`: Called by the `subscribe` method during the first subscription for the server; run in a separate greenlet and calls Redis `get_message()` method to constantly poll for new messages on pubsub channels
+- `handle_message(message)`: Called by the pubsub when a message is received on a subscribed channel; will check all existing pubsub subscriptons and then calls `on_message_handler()` for all matches
 
 ### SubscriptionManager(schema, pubsub, setup_funcs={})
 #### Arguments
-- `schema`: graphql schema instance
-- `pubsub`: any pubsub instance with publish, subscribe, and unsubscribe
-  methods (in this case an instance of the RedisPubsub class)
-- `setup_funcs`: dictionary of setup functions that map from subscription
-  name to a map of pubsub channel names and their filter functions;
-  kwargs parameters are: `query, operation_name, callback, variables,
-  context, format_error, format_response, args, subscription_name`
-
+- `schema`: Graphql schema instance (required)
+- `pubsub`: Any pubsub instance with publish, subscribe, and unsubscribe methods (in this case an instance of the RedisPubsub class) (required)
+- `setup_funcs`: Dictionary of setup functions that map from subscription name to a map of pubsub channel names and their filter functions; kwargs parameters are: `query, operation_name, callback, variables, context, format_error, format_response, args, subscription_name` (optional)
 
   example:
   ```python
@@ -66,34 +47,33 @@ $ pip install graphql-subscriptions
   ```
 
 #### Methods
-- `publish(trigger_name, payload)`: Trigger name is the subscription
-  or pubsub channel; payload is the mutation object or message that will
-  end up being passed to the subscription root_value; method called inside of
-  mutation resolve function
-- `subscribe(query, operation_name, callback, variables, context,
-  format_error, format_response)`: Called by ApolloSubscriptionServer upon
-  receiving a new subscription from a websocket.  Arguments are parsed by
-  ApolloSubscriptionServer from graphql subscription query
-- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being
-  tracked by the subscription manager instance -- returned from the
-  `subscribe()` method and called by the ApolloSubscriptionServer
+- `publish(trigger_name, payload)`: Trigger name is the subscription or pubsub channel; payload is the mutation object or message that will end up being passed to the subscription root_value; method called inside of mutation resolve function
+- `subscribe(query, operation_name, callback, variables, context, format_error, format_response)`: Called by ApolloSubscriptionServer upon receiving a new subscription from a websocket.  Arguments are parsed by ApolloSubscriptionServer from the graphql subscription query
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the subscription manager instance -- returned from the `subscribe()` method and called by the ApolloSubscriptionServer
 
 ### ApolloSubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
 #### Arguments
-- `subscription_manager`: TODO
-- `websocket`: TODO
-- `keep_alive`: TODO
-- `on_subscribe, on_unsubscribe, on_connect, on_disconnet`: TODO
+- `subscription_manager`: A subscripton manager instance (required).
+- `websocket`: The websocket object passed in from your route handler (required).
+- `keep_alive`: The time period, in seconds, that the server will send keep alive messages to the client. (optional)
+- `on_subscribe(message, subscription_parameters, websocket)`: Optional function to create custom params that will be used when resolving this subscription (optional)
+- `on_unsubscribe(websocket)`: Optional function that is called when a client unsubscribes (optional)
+- `on_connect(message_payload, websocket)`: Optional function that will be called when a client connects to the socket, called with the message_payload from the client, if the return value is an object, its elements will be added to the context.  Return false or throw an exception to reject the connection.  May return a Promise. (optional)
+- `on_disconnect(websocket)`: Optional function that called when a client disconnects (optional)
 
 #### Methods
-- TODO
+- `on_open()`: Called when the socket first opens; checks for correct subscription protocol and initializes keep alive messages
+- `on_close(reason)`: Called when socket is closed; unsubscribes from subscriptions and deletes subscription objects
+- `on_message(message)`: provides main control flow for all messaging exchanged between on socket between server and client; parses initial message, checks for exceptions, responds to client and subscribes / unsubscribes socket to mutation channels, via pubsub
+- `unsubscribe(sub_id)`: Unsubscribes socket from subscriptions specified by client
+- `timer()`: Timer for sending keep alive messages to client; run in separate greenlet per socket
+- `send_init_result(result), send_keep_alive(), send_subscription_data(sub_id, payload), send_subscription_fail(sub_id, payload), send_subscription_success(sub_id)`: convenience methods for sending different messages and payloads to client
 
 ## Example Usage
 #### Server (using Flask and Flask-Sockets):
 
 ```python
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 from flask_sockets import Sockets
 from graphql_subscriptions import (
     SubscriptionManager,
@@ -104,10 +84,11 @@ from graphql_subscriptions import (
 app = Flask(__name__)
 
 # using Flask Sockets here, but could use gevent-websocket directly
-# to create a websocket app
+# to create a websocket app and attach it to flask app object
 sockets = Sockets(app)
 
-# instantiate pubsub
+# instantiate pubsub -- this will be used to "publish" mutations
+# and also to pass it into your subscription manager
 pubsub = RedisPubsub()
 
 # create schema using graphene or another python graphql library
@@ -118,11 +99,11 @@ schema = graphene.Schema(
     subscription=Subscription
 )
 
-# instantiate subscription manager object--passing in schema and pubsub
+# instantiate subscription manager object -- passing in schema and pubsub
 subscription_mgr = SubscriptionManager(schema, pubsub)
 
-# using Flask Sockets here, on each new connection instantiate a
-# subscription app / server--passing in subscription manger and websocket
+# using Flask Sockets here -- on each new connection instantiate a
+# subscription app / server -- passing in subscription manager and websocket
 @sockets.route('/socket')
 def socket_channel(websocket):
     subscription_server = ApolloSubscriptionServer(subscription_mgr, websocket)
@@ -131,10 +112,10 @@ def socket_channel(websocket):
 
 if __name__ == "__main__":
 
-    # using gevent webserver here so multiple connections can be
+    # using a gevent webserver so multiple connections can be
     # maintained concurrently -- gevent websocket spawns a new
-    # greenlet for each request and forwards to flask app or socket app
-    # depending on request type
+    # greenlet for each request and forwards the request to flask
+    # app or socket app, depending on request type
     from geventwebsocket import WebSocketServer
 
     server = WebSocketServer(('', 5000), app)
@@ -163,7 +144,10 @@ class AddUser(graphene.ClientIDMutation):
         db.session.add(new_user)
         db.session.commit()
         ok = True
-        # publish result of mutation to pubsub
+        # publish result of mutation to pubsub; check to see if there are any
+        # active subscriptions first; this implementation uses cPickle to serialize,
+        # so you could send regular python object; here I'm converting to a dict before
+        # publishing
         if pubsub.subscriptions:
             pubsub.publish('users', new_user.as_dict())
         return AddUser(ok=ok, user=new_user)
@@ -182,8 +166,7 @@ class Subscription(graphene.ObjectType):
 ```
 
 #### Client (using Apollo Client library):
-First create create network interface and and client instances and
-then wrap them in a subscription client instance
+First create create network interface and and client instances and then wrap them in a subscription client instance
 ```js
 import ReactDOM from 'react-dom'
 import { ApolloProvider } from 'react-apollo'
@@ -217,8 +200,7 @@ ReactDOM.render(
   document.getElementById('root')
 )
 ```
-Build a simple component and then call subscribeToMore method on the
-returned data object from the inital graphql query
+Build a simple component and then call subscribeToMore method on the returned data object from the inital graphql query
 ```js
 
 import React from 'react'
