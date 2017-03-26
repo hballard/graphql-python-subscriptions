@@ -1,0 +1,27 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "custom-react-scripts": "0.0.21",
+    "parallelshell": "^2.0.0"
+  },
+  "dependencies": {
+    "apollo-client": "^0.8.7",
+    "graphql": "^0.9.1",
+    "graphql-tag": "^1.2.4",
+    "react": "^15.4.1",
+    "react-apollo": "^0.11.1",
+    "react-dom": "^15.4.1",
+    "subscriptions-transport-ws": "^0.5.1"
+  },
+  "scripts": {
+    "start": "parallelshell 'npm run client' 'npm run api'",
+    "client": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --env=jsdom",
+    "eject": "react-scripts eject",
+    "api": "source ~/.virtualenvs/chatapp/bin/activate && python ../server/runserver.py",
+    "redis": "redis-server"
+  }
+}
