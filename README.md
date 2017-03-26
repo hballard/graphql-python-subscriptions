@@ -56,15 +56,15 @@ $ pip install graphql-subscriptions
 - `subscription_manager`: A subscripton manager instance (required).
 - `websocket`: The websocket object passed in from your route handler (required).
 - `keep_alive`: The time period, in seconds, that the server will send keep alive messages to the client. (optional)
-- `on_subscribe(message, subscription_parameters, websocket)`: Optional function to create custom params that will be used when resolving this subscription (optional)
-- `on_unsubscribe(websocket)`: Optional function that is called when a client unsubscribes (optional)
-- `on_connect(message_payload, websocket)`: Optional function that will be called when a client connects to the socket, called with the message_payload from the client, if the return value is an object, its elements will be added to the context.  Return false or throw an exception to reject the connection.  May return a Promise. (optional)
-- `on_disconnect(websocket)`: Optional function that called when a client disconnects (optional)
+- `on_subscribe(message, subscription_parameters, websocket)`: Function to create custom params that will be used when resolving this subscription (optional)
+- `on_unsubscribe(websocket)`: Function that is called when a client unsubscribes (optional)
+- `on_connect(message_payload, websocket)`: Function that will be called when a client connects to the socket, called with the message_payload from the client, if the return value is an object, its elements will be added to the context.  Return false or throw an exception to reject the connection.  May return a Promise. (optional)
+- `on_disconnect(websocket)`: Function that called when a client disconnects (optional)
 
 #### Methods
 - `on_open()`: Called when the socket first opens; checks for correct subscription protocol and initializes keep alive messages
 - `on_close(reason)`: Called when socket is closed; unsubscribes from subscriptions and deletes subscription objects
-- `on_message(message)`: provides main control flow for all messaging exchanged between on socket between server and client; parses initial message, checks for exceptions, responds to client and subscribes / unsubscribes socket to mutation channels, via pubsub
+- `on_message(message)`: provides main control flow for all messaging exchanged on the socket between server and client; parses initial message, checks for exceptions, responds to client and subscribes / unsubscribes socket to mutation channels, via pubsub
 - `unsubscribe(sub_id)`: Unsubscribes socket from subscriptions specified by client
 - `timer()`: Timer for sending keep alive messages to client; run in separate greenlet per socket
 - `send_init_result(result), send_keep_alive(), send_subscription_data(sub_id, payload), send_subscription_fail(sub_id, payload), send_subscription_success(sub_id)`: convenience methods for sending different messages and payloads to client

@@ -8,7 +8,7 @@ except(IOError, ImportError):
 
 setup(
     name='graphql-subscriptions',
-    version='0.1.4',
+    version='0.1.5',
     author='Heath Ballard',
     author_email='heath.ballard@gmail.com',
     description=('A port of apollo-graphql subscriptions for python, using\
@@ -30,7 +30,8 @@ setup(
     install_requires=[
         'gevent-websocket',
         'redis',
-        'Promises'
+        'promise',
+        'graphql-core'
     ],
     include_package_data=True
 )
