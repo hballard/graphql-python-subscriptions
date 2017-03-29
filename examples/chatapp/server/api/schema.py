@@ -1,7 +1,7 @@
 import graphene
 import graphene_sqlalchemy
 
-from . import db, pubsub
+from . import db, pubsub, app
 from .models import Message as MessageModel
 from .models import User as UserModel
 
@@ -139,13 +139,9 @@ class Subscription(graphene.ObjectType):
     )
 
     def resolve_users(self, args, context, info):
-        query = User.get_query(context)
-        # if args.get('active') is None:
-        return query.filter_by(id=info.root_value.get('id'))
-        # elif args.get('active') == info.root_value.get('active'):
-            # return query.filter_by(id=info.root_value.get('id'))
-        # else:
-            # return None
+        with app.app_context():
+            query = User.get_query(context)
+            return query.filter_by(id=info.root_value.get('id'))
 
 
 schema = graphene.Schema(
