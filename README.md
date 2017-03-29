@@ -161,8 +161,9 @@ class Subscription(graphene.ObjectType):
     # mutation oject that was published will be passed as
     # root_value of subscription
     def resolve_users(self, args, context, info):
-        query = User.get_query(context)
-        return query.filter_by(id=info.root_value.get('id'))
+        with app.app_context():
+            query = User.get_query(context)
+            return query.filter_by(id=info.root_value.get('id'))
 ```
 
 #### Client (using Apollo Client library):
