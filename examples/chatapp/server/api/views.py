@@ -21,7 +21,7 @@ def socket_channel(websocket):
     subscription_server = ApolloSubscriptionServer(
         subscription_mgr,
         websocket,
-        keep_alive=300
+        keep_alive=30
     )
     subscription_server.handle()
     return []
