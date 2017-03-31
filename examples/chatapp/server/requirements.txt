@@ -10,7 +10,7 @@ graphene==1.2
 graphene-sqlalchemy==1.1.1
 graphql-core==1.0.1
 graphql-relay==0.4.5
-graphql-subscriptions==0.1.4
+graphql-subscriptions==0.1.5
 greenlet==0.4.12
 iso8601==0.1.11
 itsdangerous==0.24
