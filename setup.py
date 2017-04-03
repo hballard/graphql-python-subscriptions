@@ -8,7 +8,7 @@ except(IOError, ImportError):
 
 setup(
     name='graphql-subscriptions',
-    version='0.1.5',
+    version='0.1.6',
     author='Heath Ballard',
     author_email='heath.ballard@gmail.com',
     description=('A port of apollo-graphql subscriptions for python, using\

@@ -22,6 +22,7 @@ class RedisPubsub(object):
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
+        self.sub_id_counter += 1
         try:
             if trigger_name not in self.subscriptions.values()[0]:
                 self.pubsub.subscribe(trigger_name)
@@ -31,7 +32,6 @@ class RedisPubsub(object):
             trigger_name,
             on_message_handler
         ]
-        self.sub_id_counter += 1
         if not self.greenlet:
             self.greenlet = gevent.spawn(
                 self.wait_and_get_message
@@ -43,9 +43,9 @@ class RedisPubsub(object):
         del self.subscriptions[sub_id]
         try:
             if trigger_name not in self.subscriptions.values()[0]:
-                self.pubsub.subscribe(trigger_name)
+                self.pubsub.unsubscribe(trigger_name)
         except IndexError:
-            self.pubsub.subscribe(trigger_name)
+            self.pubsub.unsubscribe(trigger_name)
         if not self.subscriptions:
             self.greenlet = self.greenlet.kill()
 
