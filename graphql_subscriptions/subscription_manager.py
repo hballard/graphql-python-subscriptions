@@ -5,10 +5,12 @@ from types import FunctionType
 from promise import Promise
 from graphql import parse, validate, specified_rules, value_from_ast, execute
 from graphql.language.ast import OperationDefinition
+# TODO: replace graphene dependency aith my own utils
+# folder and function
+from graphene.utils.str_converters import to_snake_case
 
 
 class RedisPubsub(object):
-
     def __init__(self, host='localhost', port=6379, *args, **kwargs):
         redis.connection.socket = gevent.socket
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
@@ -29,13 +31,10 @@ class RedisPubsub(object):
         except IndexError:
             self.pubsub.subscribe(trigger_name)
         self.subscriptions[self.sub_id_counter] = [
-            trigger_name,
-            on_message_handler
+            trigger_name, on_message_handler
         ]
         if not self.greenlet:
-            self.greenlet = gevent.spawn(
-                self.wait_and_get_message
-            )
+            self.greenlet = gevent.spawn(self.wait_and_get_message)
         return Promise.resolve(self.sub_id_counter)
 
     def unsubscribe(self, sub_id):
@@ -63,14 +62,12 @@ class RedisPubsub(object):
 
 
 class ValidationError(Exception):
-
     def __init__(self, errors):
         self.errors = errors
         self.message = 'Subscription query has validation errors'
 
 
 class SubscriptionManager(object):
-
     def __init__(self, schema, pubsub, setup_funcs={}):
         self.schema = schema
         self.pubsub = pubsub
@@ -89,8 +86,7 @@ class SubscriptionManager(object):
             parsed_query,
             # TODO: Need to create/add subscriptionHasSingleRootField
             # rule from apollo subscription manager package
-            rules=specified_rules
-        )
+            rules=specified_rules)
 
         if errors:
             return Promise.reject(ValidationError(errors))
@@ -110,29 +106,25 @@ class SubscriptionManager(object):
                 for arg in root_field.arguments:
 
                     arg_definition = [
-                        arg_def for _, arg_def in
-                        fields.get(subscription_name).args.iteritems() if
-                        arg_def.out_name == arg.name.value
+                        arg_def
+                        for _, arg_def in fields.get(subscription_name)
+                        .args.iteritems() if arg_def.out_name == arg.name.value
                     ][0]
 
                     args[arg_definition.out_name] = value_from_ast(
-                        arg.value,
-                        arg_definition.type,
-                        variables=variables
-                    )
+                        arg.value, arg_definition.type, variables=variables)
 
-        if self.setup_funcs.get(subscription_name):
-            trigger_map = self.setup_funcs[subscription_name](
-                query,
-                operation_name,
-                callback,
-                variables,
-                context,
-                format_error,
-                format_response,
-                args,
-                subscription_name
-            )
+        if self.setup_funcs.get(to_snake_case(subscription_name)):
+            trigger_map = self.setup_funcs[to_snake_case(subscription_name)](
+                query=query,
+                operation_name=operation_name,
+                callback=callback,
+                variables=variables,
+                context=context,
+                format_error=format_error,
+                format_response=format_response,
+                args=args,
+                subscription_name=subscription_name)
         else:
             trigger_map = {}
             trigger_map[subscription_name] = {}
@@ -143,17 +135,21 @@ class SubscriptionManager(object):
         subscription_promises = []
 
         for trigger_name in trigger_map.viewkeys():
-            channel_options = trigger_map[trigger_name].get(
-                'channel_options',
-                {}
-            )
-            filter = trigger_map[trigger_name].get(
-                'filter',
-                lambda arg1, arg2: True
-            )
+            try:
+                channel_options = trigger_map[trigger_name].get(
+                    'channel_options', {})
+                filter = trigger_map[trigger_name].get('filter',
+                                                       lambda arg1, arg2: True)
+            # TODO: Think about this some more...Apollo library
+            # let's all messages through by default, even if
+            # the users incorrectly uses the setup_funcs (do not
+            # use 'filter' or 'channel_options' keys); I think it
+            # would be better to raise an exception here
+            except AttributeError:
+                channel_options = {}
+                filter = lambda arg1, arg2: True
 
             def on_message(root_value):
-
                 def context_promise_handler(result):
                     if isinstance(context, FunctionType):
                         return context()
@@ -161,53 +157,31 @@ class SubscriptionManager(object):
                         return context
 
                 def filter_func_promise_handler(context):
-                    return Promise.all([
-                        context,
-                        filter(root_value, context)
-                    ])
+                    return Promise.all([context, filter(root_value, context)])
 
                 def context_do_execute_handler(result):
                     context, do_execute = result
                     if not do_execute:
                         return
                     else:
-                        return execute(
-                            self.schema,
-                            parsed_query,
-                            root_value,
-                            context,
-                            variables,
-                            operation_name
-                        )
+                        return execute(self.schema, parsed_query, root_value,
+                                       context, variables, operation_name)
 
-                return Promise.resolve(
-                    True
-                ).then(
-                    context_promise_handler
-                ).then(
-                    filter_func_promise_handler
-                ).then(
-                    context_do_execute_handler
-                ).then(
-                    lambda result: callback(None, result)
-                ).catch(
-                    lambda error: callback(error, None)
-                )
+                return Promise.resolve(True).then(
+                    context_promise_handler).then(
+                        filter_func_promise_handler).then(
+                            context_do_execute_handler).then(
+                                lambda result: callback(None, result)).catch(
+                                    lambda error: callback(error, None))
 
             subscription_promises.append(
-                self.pubsub.subscribe(
-                    trigger_name,
-                    on_message,
-                    channel_options
-                ).then(
-                    lambda id: self.subscriptions[
-                        external_subscription_id].append(id)
-                )
-            )
+                self.pubsub.
+                subscribe(trigger_name, on_message, channel_options).then(
+                    lambda id: self.subscriptions[external_subscription_id].append(id)
+                ))
 
         return Promise.all(subscription_promises).then(
-            lambda result: external_subscription_id
-        )
+            lambda result: external_subscription_id)
 
     def unsubscribe(self, sub_id):
         for internal_id in self.subscriptions.get(sub_id):

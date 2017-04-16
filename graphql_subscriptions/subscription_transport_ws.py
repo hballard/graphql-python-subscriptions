@@ -16,9 +16,13 @@ GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
 
 
 class ApolloSubscriptionServer(WebSocketApplication):
-
-    def __init__(self, subscription_manager, websocket, keep_alive=None,
-                 on_subscribe=None, on_unsubscribe=None, on_connect=None,
+    def __init__(self,
+                 subscription_manager,
+                 websocket,
+                 keep_alive=None,
+                 on_subscribe=None,
+                 on_unsubscribe=None,
+                 on_connect=None,
                  on_disconnect=None):
 
         assert subscription_manager, "Must provide\
@@ -47,8 +51,8 @@ class ApolloSubscriptionServer(WebSocketApplication):
             self.on_unsubscribe(self.ws)
 
     def on_open(self):
-        if self.ws.protocol is None or (GRAPHQL_SUBSCRIPTIONS not in
-                                        self.ws.protocol):
+        if self.ws.protocol is None or (
+                GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol):
             self.ws.close(1002)
 
         def keep_alive_callback():
@@ -87,10 +91,10 @@ class ApolloSubscriptionServer(WebSocketApplication):
             try:
                 parsed_message = json.loads(message)
             except Exception as e:
-                self.send_subscription_fail(
-                    None,
-                    {'errors': [{'message': str(e)}]}
-                )
+                self.send_subscription_fail(None,
+                                            {'errors': [{
+                                                'message': str(e)
+                                            }]})
 
             sub_id = parsed_message.get('id')
 
@@ -99,9 +103,9 @@ class ApolloSubscriptionServer(WebSocketApplication):
                 on_connect_promise = Promise.resolve(True)
 
                 if self.on_connect:
-                    on_connect_promise = Promise.resolve(self.on_connect(
-                        parsed_message.get('payload'), self.ws
-                    ))
+                    on_connect_promise = Promise.resolve(
+                        self.on_connect(
+                            parsed_message.get('payload'), self.ws))
 
                 nonlocal.on_init_resolve(on_connect_promise)
 
@@ -125,22 +129,20 @@ class ApolloSubscriptionServer(WebSocketApplication):
                 def subscription_start_promise_handler(init_result):
                     base_params = {
                         'query': parsed_message.get('query'),
-                        'variables': parsed_message.get('variables'),
                         'operation_name': parsed_message.get('operation_name'),
-                        'context': init_result if isinstance(
-                            init_result, dict) else {},
-                        'format_response': None,
+                        'callback': None,
+                        'variables': parsed_message.get('variables'),
+                        'context': init_result
+                        if isinstance(init_result, dict) else {},
                         'format_error': None,
                         'callback': None
                     }
                     promised_params = Promise.resolve(base_params)
 
                     if self.on_subscribe:
-                        promised_params = Promise.resolve(self.on_subscribe(
-                            parsed_message,
-                            base_params,
-                            self.ws
-                        ))
+                        promised_params = Promise.resolve(
+                            self.on_subscribe(parsed_message, base_params,
+                                              self.ws))
 
                     if self.connection_subscriptions.get(sub_id):
                         self.unsubscribe(self.connection_subscriptions[sub_id])
@@ -151,28 +153,32 @@ class ApolloSubscriptionServer(WebSocketApplication):
                             error = 'Invalid params returned from\
                                     OnSubscribe!  Return value must\
                                     be an dict'
-                            self.send_subscription_fail(sub_id, {
-                                'errors': [{'message': error}]
-                            })
+
+                            self.send_subscription_fail(
+                                sub_id, {'errors': [{
+                                    'message': error
+                                }]})
                             raise TypeError(error)
 
                         def params_callback(error, result):
                             if not error:
-                                self.send_subscription_data(sub_id, {
-                                    'data': result.data
-                                })
+                                self.send_subscription_data(
+                                    sub_id, {'data': result.data})
                             elif error.errors:
-                                self.send_subscription_data(sub_id, {
-                                    'errors': error.errors
-                                })
+                                self.send_subscription_data(
+                                    sub_id, {'errors': error.errors})
                             elif error.message:
-                                self.send_subscription_data(sub_id, {
-                                    'errors': [{'message': error.message}]
-                                })
+                                self.send_subscription_data(
+                                    sub_id,
+                                    {'errors': [{
+                                        'message': error.message
+                                    }]})
                             else:
-                                self.send_subscription_data(sub_id, {
-                                    'errors': [{'message': str(error)}]
-                                })
+                                self.send_subscription_data(
+                                    sub_id,
+                                    {'errors': [{
+                                        'message': str(error)
+                                    }]})
 
                         params['callback'] = params_callback
 
@@ -184,29 +190,28 @@ class ApolloSubscriptionServer(WebSocketApplication):
 
                     def error_catch_handler(e):
                         if e.errors:
-                            self.send_subscription_fail(sub_id, {
-                                'errors': e.errors
-                            })
+                            self.send_subscription_fail(
+                                sub_id, {'errors': e.errors})
                         elif e.message:
-                            self.send_subscription_fail(sub_id, {
-                                'errors': [{'message': e.message}]
-                            })
+                            self.send_subscription_fail(
+                                sub_id, {'errors': [{
+                                    'message': e.message
+                                }]})
                         elif e.get('message'):
-                            self.send_subscription_fail(sub_id, {
-                                'errors': [{'message': e.get('message')}]
-                            })
+                            self.send_subscription_fail(
+                                sub_id,
+                                {'errors': [{
+                                    'message': e.get('message')
+                                }]})
                         else:
-                            self.send_subscription_fail(sub_id, {
-                                'errors': [{'message': str(e)}]
-                            })
+                            self.send_subscription_fail(
+                                sub_id, {'errors': [{
+                                    'message': str(e)
+                                }]})
 
-                    promised_params.then(
-                        promised_params_handler
-                    ).then(
-                        graphql_sub_id_promise_handler
-                    ).catch(
-                        error_catch_handler
-                    )
+                    promised_params.then(promised_params_handler).then(
+                        graphql_sub_id_promise_handler).catch(
+                            error_catch_handler)
 
                 # Promise from init statement (line 54)
                 # seems to reset between if statements
@@ -229,40 +234,27 @@ class ApolloSubscriptionServer(WebSocketApplication):
                 nonlocal.on_init_resolve(Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
-                    subscription_end_promise_handler
-                )
+                    subscription_end_promise_handler)
 
             else:
 
-                self.send_subscription_fail(sub_id, {
-                    'errors': [{
+                self.send_subscription_fail(
+                    sub_id, {'errors': [{
                         'message': 'Invalid message type!'
-                    }]
-                })
+                    }]})
 
         return on_message_return_handler(msg)
 
     def send_subscription_data(self, sub_id, payload):
-        message = {
-            'type': SUBSCRIPTION_DATA,
-            'id': sub_id,
-            'payload': payload
-        }
+        message = {'type': SUBSCRIPTION_DATA, 'id': sub_id, 'payload': payload}
         self.ws.send(json.dumps(message))
 
     def send_subscription_fail(self, sub_id, payload):
-        message = {
-            'type': SUBSCRIPTION_FAIL,
-            'id': sub_id,
-            'payload': payload
-        }
+        message = {'type': SUBSCRIPTION_FAIL, 'id': sub_id, 'payload': payload}
         self.ws.send(json.dumps(message))
 
     def send_subscription_success(self, sub_id):
-        message = {
-            'type': SUBSCRIPTION_SUCCESS,
-            'id': sub_id
-        }
+        message = {'type': SUBSCRIPTION_SUCCESS, 'id': sub_id}
         self.ws.send(json.dumps(message))
 
     def send_init_result(self, result):
