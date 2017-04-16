@@ -1,13 +1,14 @@
-import redis
-import gevent
 import cPickle
 from types import FunctionType
-from promise import Promise
+
 from graphql import parse, validate, specified_rules, value_from_ast, execute
 from graphql.language.ast import OperationDefinition
-# TODO: replace graphene dependency aith my own utils
-# folder and function
-from graphene.utils.str_converters import to_snake_case
+from promise import Promise
+import gevent
+import redis
+
+from .utils import to_snake_case
+from .validation import SubscriptionHasSingleRootField
 
 
 class RedisPubsub(object):
@@ -81,15 +82,11 @@ class SubscriptionManager(object):
     def subscribe(self, query, operation_name, callback, variables, context,
                   format_error, format_response):
         parsed_query = parse(query)
-        errors = validate(
-            self.schema,
-            parsed_query,
-            # TODO: Need to create/add subscriptionHasSingleRootField
-            # rule from apollo subscription manager package
-            rules=specified_rules)
+        rules = specified_rules + [SubscriptionHasSingleRootField]
+        errors = validate(self.schema, parsed_query, rules=rules)
 
         if errors:
-            return Promise.reject(ValidationError(errors))
+            return Promise.rejected(ValidationError(errors))
 
         args = {}
 
@@ -140,14 +137,16 @@ class SubscriptionManager(object):
                     'channel_options', {})
                 filter = trigger_map[trigger_name].get('filter',
                                                        lambda arg1, arg2: True)
-            # TODO: Think about this some more...Apollo library
+            # TODO: Think about this some more...the Apollo library
             # let's all messages through by default, even if
-            # the users incorrectly uses the setup_funcs (do not
+            # the users incorrectly uses the setup_funcs (does not
             # use 'filter' or 'channel_options' keys); I think it
             # would be better to raise an exception here
             except AttributeError:
                 channel_options = {}
-                filter = lambda arg1, arg2: True
+
+                def filter(arg1, arg2):
+                    return True
 
             def on_message(root_value):
                 def context_promise_handler(result):

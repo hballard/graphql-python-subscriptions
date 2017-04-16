@@ -132,10 +132,10 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         'operation_name': parsed_message.get('operation_name'),
                         'callback': None,
                         'variables': parsed_message.get('variables'),
-                        'context': init_result
-                        if isinstance(init_result, dict) else {},
+                        'context': init_result if isinstance(
+                            init_result, dict) else {},
                         'format_error': None,
-                        'callback': None
+                        'format_response': None
                     }
                     promised_params = Promise.resolve(base_params)
 
