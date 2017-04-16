@@ -8,7 +8,7 @@ except (IOError, ImportError):
 
 setup(
     name='graphql-subscriptions',
-    version='0.1.6',
+    version='0.1.7',
     author='Heath Ballard',
     author_email='heath.ballard@gmail.com',
     description=('A port of apollo-graphql subscriptions for python, using\
@@ -27,5 +27,5 @@ setup(
         'License :: OSI Approved :: MIT License'
     ],
     install_requires=['gevent-websocket', 'redis', 'promise', 'graphql-core'],
-    tests_require=['pytest', 'fakeredis'],
+    tests_require=['pytest', 'pytest-mock', 'fakeredis', 'graphene'],
     include_package_data=True)

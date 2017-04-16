@@ -6,7 +6,7 @@ This is a implementation of apollographql  [subscriptions-transport-ws](https://
 
 Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.  The api is below, but if you want more information, consult the apollo graphql libraries referenced above.
 
-Initial implementation.  Currently only works with Python 2.  No tests yet.
+Initial implementation.  Currently only works with Python 2.
 
 ## Installation
 ```
@@ -39,7 +39,7 @@ $ pip install graphql-subscriptions
       args = kwargs.get('args')
       return {
           'new_user_channel': {
-              'filter': lambda user, context: user.active == args.active
+              'filter': lambda root, context: root.active == args.active
           }
       }
 
