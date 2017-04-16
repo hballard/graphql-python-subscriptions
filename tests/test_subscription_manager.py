@@ -1,7 +1,13 @@
 import pytest
 import redis
 import graphene
-from graphql_subscriptions import RedisPubsub, SubscriptionManager
+import gevent
+import sys
+from promise import Promise
+from graphql_subscriptions import (
+    RedisPubsub,
+    SubscriptionManager,
+)
 
 
 @pytest.fixture
@@ -22,37 +28,35 @@ def pubsub(mock_redis):
 ])
 def test_pubsub_subscribe_and_publish(pubsub, test_input, expected):
 
-    def message_handler(message):
-        assert message == expected
+    def message_callback(message):
+        try:
+            assert message == expected
+            pubsub.greenlet.kill()
+        except AssertionError as e:
+            sys.exit(e)
 
     def publish_callback(sub_id):
         assert pubsub.publish('a', test_input)
+        pubsub.greenlet.join()
 
-    pubsub.subscribe('a', message_handler, {}).then(publish_callback)
-
-    while True:
-        message = pubsub.pubsub.get_message(ignore_subscribe_messages=True)
-        if message:
-            pubsub.handle_message(message)
-            break
+    p1 = pubsub.subscribe('a', message_callback, {})
+    p2 = p1.then(publish_callback)
+    p2.get()
 
 
-@pytest.mark.parametrize('test_input, expected', [
-    ('test', 'test'),
-    ({1: 'test'}, {1: 'test'}),
-    (None, None)
-])
-def test_pubsub_subscribe_and_unsubscribe(pubsub, test_input, expected):
+def test_pubsub_subscribe_and_unsubscribe(pubsub):
 
-    def message_handler(message):
-        assert 0
+    def message_callback(message):
+        sys.exit('Message callback should not have been called')
 
     def unsubscribe_publish_callback(sub_id):
         pubsub.unsubscribe(sub_id)
-        assert pubsub.publish('a', test_input)
+        assert pubsub.publish('a', 'test')
+        gevent.sleep(.01)
 
-    pubsub.subscribe('a', message_handler,
-                     {}).then(unsubscribe_publish_callback)
+    p1 = pubsub.subscribe('a', message_callback, {})
+    p2 = p1.then(unsubscribe_publish_callback)
+    p2.get()
 
 
 @pytest.fixture
@@ -66,7 +70,7 @@ def schema():
     class Subscription(graphene.ObjectType):
         test_subscription = graphene.String()
         test_context = graphene.String()
-        test_filter = graphene.String(filter_boolean=graphene.Boolean())
+        test_filter = graphene.String(filterBoolean=graphene.Boolean())
         test_filter_multi = graphene.String(
             filter_boolean=graphene.Boolean(),
             a=graphene.String(),
@@ -81,10 +85,10 @@ def schema():
             return context
 
         def resolve_test_filter(self, args, context, info):
-            return 'good_filter' if args.get('filter_boolean') else 'bad_filter'
+            return 'good_filter' if args.get('filterBoolean') else 'bad_filter'
 
         def resolve_test_filter_multi(self, args, context, info):
-            return 'good_filter' if args.get('filter_boolean') else 'bad_filter'
+            return 'good_filter' if args.get('filterBoolean') else 'bad_filter'
 
         def resolve_test_channel_options(self, args, context, info):
             return self
@@ -99,8 +103,11 @@ def sub_mgr(pubsub, schema):
         args = kwargs.get('args')
         return {
             'filter_1': {
-                'filter': lambda root, context: root.get('filter_boolean') == args.get('filter_boolean')
-            }
+                'filter': lambda root, context: root.get('filterBoolean') == args.get('filterBoolean')
+            },
+            'filter_2': {
+                'filter': lambda root, context: Promise.resolve(root.get('filterBoolean') == args.get('filterBoolean'))
+            },
         }
 
     def filter_multi(**kwargs):
@@ -137,3 +144,135 @@ def sub_mgr(pubsub, schema):
             'test_context': filter_context
         }
     )
+
+
+def test_query_is_valid_and_throws_error(sub_mgr):
+    query = 'query a{ testInt }'
+
+    def handler(error):
+        assert error.message == 'Subscription query has validation errors'
+
+    p1 = sub_mgr.subscribe(query, 'a', lambda: None, {}, {}, None, None)
+    p2 = p1.catch(handler)
+    p2.get()
+
+
+# TODO: Still need to build this validation and add to library
+def test_rejects_subscription_with_multiple_root_fields(sub_mgr):
+    pass
+
+
+def test_subscribe_valid_query_return_sub_id(sub_mgr):
+    query = 'subscription X{ testSubscription }'
+
+    def handler(sub_id):
+        assert isinstance(sub_id, int)
+        sub_mgr.unsubscribe(sub_id)
+
+    p1 = sub_mgr.subscribe(query, 'X', lambda: None, {}, {}, None, None)
+    p2 = p1.then(handler)
+    p2.get()
+
+
+def test_subscribe_nameless_query_and_return_sub_id(sub_mgr):
+    query = 'subscription { testSubscription }'
+
+    def handler(sub_id):
+        assert isinstance(sub_id, int)
+        sub_mgr.unsubscribe(sub_id)
+
+    p1 = sub_mgr.subscribe(query, None, lambda: None, {}, {}, None, None)
+    p2 = p1.then(handler)
+    p2.get()
+
+
+def test_subscribe_with_valid_query_return_root_value(sub_mgr):
+    query = 'subscription X{ testSubscription }'
+
+    def callback(e, payload):
+        try:
+            assert payload.data.get('testSubscription') == 'good'
+            sub_mgr.pubsub.greenlet.kill()
+        except AssertionError as e:
+            sys.exit(e)
+
+    def publish_and_unsubscribe_handler(sub_id):
+        sub_mgr.publish('testSubscription', 'good')
+        sub_mgr.pubsub.greenlet.join()
+        sub_mgr.unsubscribe(sub_id)
+
+    p1 = sub_mgr.subscribe(query, 'X', callback, {}, {}, None, None)
+    p2 = p1.then(publish_and_unsubscribe_handler)
+    p2.get()
+
+
+def test_use_filter_functions_properly(sub_mgr):
+    query = 'subscription Filter1($filterBoolean: Boolean) {\
+    testFilter(filterBoolean: $filterBoolean)}'
+
+    def callback(err, payload):
+        if err:
+            sys.exit(err)
+        else:
+            try:
+                if payload is None:
+                    assert True
+                else:
+                    assert payload.data.get('testFilter') == 'good_filter'
+                    sub_mgr.pubsub.greenlet.kill()
+            except AssertionError as e:
+                sys.exit(e)
+
+    def publish_and_unsubscribe_handler(sub_id):
+        sub_mgr.publish('filter_1', {'filterBoolean': False})
+        sub_mgr.publish('filter_1', {'filterBoolean': True})
+        sub_mgr.pubsub.greenlet.join()
+        sub_mgr.unsubscribe(sub_id)
+
+    p1 = sub_mgr.subscribe(
+        query,
+        'Filter1',
+        callback,
+        {'filterBoolean': True},
+        {},
+        None,
+        None
+    )
+    p2 = p1.then(publish_and_unsubscribe_handler)
+    p2.get()
+
+
+def test_use_filter_func_that_returns_promise(sub_mgr):
+    query = 'subscription Filter2($filterBoolean: Boolean) {\
+    testFilter(filterBoolean: $filterBoolean)}'
+
+    def callback(err, payload):
+        if err:
+            sys.exit(err)
+        else:
+            try:
+                if payload is None:
+                    assert True
+                else:
+                    assert payload.data.get('testFilter') == 'good_filter'
+                    sub_mgr.pubsub.greenlet.kill()
+            except AssertionError as e:
+                sys.exit(e)
+
+    def publish_and_unsubscribe_handler(sub_id):
+        sub_mgr.publish('filter_2', {'filterBoolean': False})
+        sub_mgr.publish('filter_2', {'filterBoolean': True})
+        sub_mgr.pubsub.greenlet.join()
+        sub_mgr.unsubscribe(sub_id)
+
+    p1 = sub_mgr.subscribe(
+        query,
+        'Filter2',
+        callback,
+        {'filterBoolean': True},
+        {},
+        None,
+        None
+    )
+    p2 = p1.then(publish_and_unsubscribe_handler)
+    p2.get()
