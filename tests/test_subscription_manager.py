@@ -13,12 +13,8 @@ from graphql_subscriptions.validation import SubscriptionHasSingleRootField
 
 
 @pytest.fixture
-def mock_redis(monkeypatch):
+def pubsub(monkeypatch):
     monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
-
-
-@pytest.fixture
-def pubsub(mock_redis):
     return RedisPubsub()
 
 

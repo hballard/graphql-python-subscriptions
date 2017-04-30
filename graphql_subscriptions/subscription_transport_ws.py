@@ -77,13 +77,11 @@ class ApolloSubscriptionServer(WebSocketApplication):
         if msg is None:
             return
 
-        class nonlocal:
-            on_init_resolve = None
-            on_init_reject = None
+        nonlocal = {'on_init_resolve': None, 'on_init_reject': None}
 
         def init_promise_handler(resolve, reject):
-            nonlocal.on_init_resolve = resolve
-            nonlocal.on_init_reject = reject
+            nonlocal['on_init_resolve'] = resolve
+            nonlocal['on_init_reject'] = reject
 
         self.connection_context['init_promise'] = Promise(init_promise_handler)
 
@@ -107,7 +105,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         self.on_connect(
                             parsed_message.get('payload'), self.ws))
 
-                nonlocal.on_init_resolve(on_connect_promise)
+                nonlocal['on_init_resolve'](on_connect_promise)
 
                 def init_success_promise_handler(result):
                     if not result:
@@ -218,7 +216,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                 # not sure if this behavior is correct or
                 # not per promises A spec...need to
                 # investigate
-                nonlocal.on_init_resolve(Promise.resolve(True))
+                nonlocal['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
                     subscription_start_promise_handler)
@@ -231,7 +229,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         del self.connection_subscriptions[sub_id]
 
                 # same rationale as above
-                nonlocal.on_init_resolve(Promise.resolve(True))
+                nonlocal['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
                     subscription_end_promise_handler)
