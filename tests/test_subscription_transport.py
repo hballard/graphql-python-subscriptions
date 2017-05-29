@@ -7,7 +7,6 @@
 from functools import wraps
 import copy
 import json
-import multiprocess
 import os
 import sys
 
@@ -18,6 +17,7 @@ from geventwebsocket import WebSocketServer
 from promise import Promise
 import fakeredis
 import graphene
+import multiprocess
 import pytest
 import redis
 
