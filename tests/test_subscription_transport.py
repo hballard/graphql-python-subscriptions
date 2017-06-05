@@ -8,9 +8,12 @@ from functools import wraps
 import copy
 import json
 import os
+import Queue
 import sys
+import threading
+import time
 
-from flask import Flask
+from flask import Flask, request
 from flask_graphql import GraphQLView
 from flask_sockets import Sockets
 from geventwebsocket import WebSocketServer
@@ -20,13 +23,13 @@ import graphene
 import multiprocess
 import pytest
 import redis
+import requests
 
 from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
                                    ApolloSubscriptionServer)
 
 from graphql_subscriptions.subscription_transport_ws import (
-    SUBSCRIPTION_START, SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA, KEEPALIVE,
-    SUBSCRIPTION_END)
+    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA, KEEPALIVE)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -35,8 +38,6 @@ else:
 
 TEST_PORT = 5000
 KEEP_ALIVE_TEST_PORT = TEST_PORT + 1
-DELAYED_TEST_PORT = TEST_PORT + 2
-RAW_TEST_PORT = TEST_PORT + 4
 EVENTS_TEST_PORT = TEST_PORT + 5
 
 
@@ -73,6 +74,9 @@ class PickableMock():
         all_call_args = call_args | call_kwargs
         assert all_call_args.issubset(self.call_args)
 
+    def assert_called_with_contains(self, arg_fragment):
+        assert any([arg_fragment in item for item in self.call_args])
+
 
 def promisify(f):
     @wraps(f)
@@ -83,6 +87,12 @@ def promisify(f):
         return Promise(executor)
 
     return wrapper
+
+
+def enqueue_output(out, queue):
+    with out:
+        for line in iter(out.readline, b''):
+            queue.put(line)
 
 
 @pytest.fixture
@@ -145,7 +155,7 @@ def schema(data):
 
 @pytest.fixture
 def sub_mgr(pubsub, schema):
-    def user_filtered_func(**kwargs):
+    def user_filtered(**kwargs):
         args = kwargs.get('args')
         return {
             'user_filtered': {
@@ -153,27 +163,47 @@ def sub_mgr(pubsub, schema):
             }
         }
 
-    setup_funcs = {'user_filtered': user_filtered_func}
+    setup_funcs = {'user_filtered': user_filtered}
 
     return SubscriptionManager(schema, pubsub, setup_funcs)
 
 
 @pytest.fixture
 def handlers():
-    def copy_and_update_dict(msg, params, websocket):
+    def on_subscribe(msg, params, websocket):
         new_params = copy.deepcopy(params)
-        new_params.update({'context': msg['context']})
+        new_params.update({'context': msg.get('context', {})})
         return new_params
 
-    return {'on_subscribe': promisify(copy_and_update_dict)}
+    return {'on_subscribe': promisify(on_subscribe)}
 
 
 @pytest.fixture
-def options(handlers):
+def options1(handlers):
     return {
         'on_subscribe':
         lambda msg, params, ws: handlers['on_subscribe'](msg, params, ws)
     }
+
+
+@pytest.fixture
+def options(mocker):
+
+    mgr = multiprocess.Manager()
+    q = mgr.Queue()
+
+    def on_subscribe(self, msg, params, websocket):
+        new_params = copy.deepcopy(params)
+        new_params.update({'context': msg.get('context', {})})
+        q.put(self)
+        return new_params
+
+    options = {
+        'on_subscribe':
+        PickableMock(side_effect=promisify(on_subscribe), name='on_subscribe')
+    }
+
+    return options, q
 
 
 @pytest.fixture
@@ -224,6 +254,10 @@ def create_app(sub_mgr, schema, options):
         '/graphql',
         view_func=GraphQLView.as_view('graphql', schema=schema, graphiql=True))
 
+    @app.route('/publish', methods=['POST'])
+    def sub_mgr_publish():
+        sub_mgr.publish(*request.get_json())
+
     @sockets.route('/socket')
     def socket_channel(websocket):
         subscription_server = ApolloSubscriptionServer(sub_mgr, websocket,
@@ -242,13 +276,14 @@ def app_worker(app, port):
 @pytest.fixture()
 def server(sub_mgr, schema, options):
 
-    app = create_app(sub_mgr, schema, options)
+    opt, q = options
+    app = create_app(sub_mgr, schema, opt)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
                                    'port': TEST_PORT})
     process.start()
-    yield
+    yield q
     process.terminate()
 
 
@@ -301,9 +336,9 @@ def test_should_trigger_on_connect_if_client_connect_valid(server_with_events):
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
-        ret_value = server_with_events.get_nowait()
-        assert ret_value.name == 'on_connect'
-        ret_value.assert_called_once()
+        mock = server_with_events.get_nowait()
+        assert mock.name == 'on_connect'
+        mock.assert_called_once()
 
 
 def test_should_trigger_on_connect_with_correct_cxn_params(server_with_events):
@@ -323,10 +358,10 @@ def test_should_trigger_on_connect_with_correct_cxn_params(server_with_events):
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
-        ret_value = server_with_events.get_nowait()
-        assert ret_value.name == 'on_connect'
-        ret_value.assert_called_once()
-        ret_value.assert_called_with({'test': True})
+        mock = server_with_events.get_nowait()
+        assert mock.name == 'on_connect'
+        mock.assert_called_once()
+        mock.assert_called_with({'test': True})
 
 
 def test_trigger_on_disconnect_when_client_disconnects(server_with_events):
@@ -341,9 +376,9 @@ def test_trigger_on_disconnect_when_client_disconnects(server_with_events):
         os.path.join(os.path.dirname(__file__), 'node_modules'),
         EVENTS_TEST_PORT)
     subprocess.check_output(['node', '-e', node_script])
-    ret_value = server_with_events.get_nowait()
-    assert ret_value.name == 'on_disconnect'
-    ret_value.assert_called_once()
+    mock = server_with_events.get_nowait()
+    assert mock.name == 'on_disconnect'
+    mock.assert_called_once()
 
 
 def test_should_call_unsubscribe_when_client_closes_cxn(server_with_events):
@@ -379,9 +414,9 @@ def test_should_call_unsubscribe_when_client_closes_cxn(server_with_events):
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=1)
     except:
         while True:
-            ret_value = server_with_events.get_nowait()
-            if ret_value.name == 'on_unsubscribe':
-                ret_value.assert_called_once()
+            mock = server_with_events.get_nowait()
+            if mock.name == 'on_unsubscribe':
+                mock.assert_called_once()
                 break
 
 
@@ -415,9 +450,9 @@ def test_should_trigger_on_subscribe_when_client_subscribes(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
         while True:
-            ret_value = server_with_events.get_nowait()
-            if ret_value.name == 'on_subscribe':
-                ret_value.assert_called_once()
+            mock = server_with_events.get_nowait()
+            if mock.name == 'on_subscribe':
+                mock.assert_called_once()
                 break
 
 
@@ -452,7 +487,674 @@ def test_should_trigger_on_unsubscribe_when_client_unsubscribes(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
         while True:
-            ret_value = server_with_events.get_nowait()
-            if ret_value.name == 'on_unsubscribe':
-                ret_value.assert_called_once()
+            mock = server_with_events.get_nowait()
+            if mock.name == 'on_unsubscribe':
+                mock.assert_called_once()
                 break
+
+
+def test_should_send_correct_results_to_multiple_client_subscriptions(
+        server):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        const client1 = new SubscriptionClient('ws://localhost:{1}/socket')
+        let numResults = 0;
+        client.subscribe({{
+            query: `subscription useInfo($id: String) {{
+              user(id: $id) {{
+                id
+                name
+              }}
+            }}`,
+            operationName: 'useInfo',
+            variables: {{
+              id: 3,
+            }},
+
+            }}, function (error, result) {{
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+                if (result) {{
+                  numResults++;
+                  console.log(JSON.stringify({{
+                    client: {{
+                      result: result,
+                      numResults: numResults
+                    }}
+                  }}));
+                }} else {{
+                  // pass
+                }}
+            }}
+        );
+        const client2 = new SubscriptionClient('ws://localhost:{1}/socket')
+        let numResults1 = 0;
+        client2.subscribe({{
+            query: `subscription useInfo($id: String) {{
+              user(id: $id) {{
+                id
+                name
+              }}
+            }}`,
+            operationName: 'useInfo',
+            variables: {{
+              id: 2,
+            }},
+
+            }}, function (error, result) {{
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+                if (result) {{
+                  numResults1++;
+                  console.log(JSON.stringify({{
+                    client2: {{
+                      result: result,
+                      numResults: numResults1
+                    }}
+                  }}));
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['user', {}])
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    client = ret_values['client']
+    assert client['result']['user']
+    assert client['result']['user']['id'] == '3'
+    assert client['result']['user']['name'] == 'Jessie'
+    assert client['numResults'] == 1
+    client2 = ret_values['client2']
+    assert client2['result']['user']
+    assert client2['result']['user']['id'] == '2'
+    assert client2['result']['user']['name'] == 'Marie'
+    assert client2['numResults'] == 1
+
+
+# Graphene subscriptions implementation does not currently return an error for
+# missing or incorrect field(s); this test will continue to fail until that is
+# fixed
+def test_send_subscription_fail_message_to_client_with_invalid_query(server):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        setTimeout(function () {{
+            client.subscribe({{
+                query: `subscription useInfo($id: String) {{
+                  user(id: $id) {{
+                    id
+                    birthday
+                  }}
+                }}`,
+                operationName: 'useInfo',
+                variables: {{
+                  id: 3,
+                }},
+
+                }}, function (error, result) {{
+                }}
+            );
+        }}, 100);
+            client.client.onmessage = (message) => {{
+                let msg = JSON.parse(message.data)
+                console.log(JSON.stringify({{[msg.type]: msg}}))
+            }};
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert ret_values['type'] == SUBSCRIPTION_FAIL
+    assert len(ret_values['payload']['errors']) > 0
+
+
+def test_should_setup_the_proper_filters_when_subscribing(server):
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        const client2 = new SubscriptionClient('ws://localhost:{1}/socket')
+        let numResults = 0;
+        client.subscribe({{
+            query: `subscription useInfoFilter1($id: String) {{
+              userFiltered(id: $id) {{
+                id
+                name
+              }}
+            }}`,
+            operationName: 'useInfoFilter1',
+            variables: {{
+              id: 3,
+            }},
+
+            }}, function (error, result) {{
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+                if (result) {{
+                  numResults += 1;
+                  console.log(JSON.stringify({{
+                    client: {{
+                      result: result,
+                      numResults: numResults
+                    }}
+                  }}));
+                }} else {{
+                  // pass
+                }}
+            }}
+        );
+        client2.subscribe({{
+            query: `subscription useInfoFilter1($id: String) {{
+              userFiltered(id: $id) {{
+                id
+                name
+              }}
+            }}`,
+            operationName: 'useInfoFilter1',
+            variables: {{
+              id: 1,
+            }},
+
+            }}, function (error, result) {{
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+                if (result) {{
+                  numResults += 1;
+                  console.log(JSON.stringify({{
+                    client2: {{
+                      result: result,
+                      numResults: numResults
+                    }}
+                  }}));
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['user_filtered', {'id': 1}])
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['user_filtered', {'id': 2}])
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['user_filtered', {'id': 3}])
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    client = ret_values['client']
+    assert client['result']['userFiltered']
+    assert client['result']['userFiltered']['id'] == '3'
+    assert client['result']['userFiltered']['name'] == 'Jessie'
+    assert client['numResults'] == 2
+    client2 = ret_values['client2']
+    assert client2['result']['userFiltered']
+    assert client2['result']['userFiltered']['id'] == '1'
+    assert client2['result']['userFiltered']['name'] == 'Dan'
+    assert client2['numResults'] == 1
+
+
+def test_correctly_sets_the_context_in_on_subscribe(server):
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const CTX = 'testContext';
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        client.subscribe({{
+            query: `subscription context {{
+                context
+            }}`,
+            variables: {{}},
+            context: CTX,
+            }}, (error, result) => {{
+                client.unsubscribeAll();
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+                if (result) {{
+                  console.log(JSON.stringify({{
+                    client: {{
+                      result: result,
+                    }}
+                  }}));
+                }} else {{
+                  // pass
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['context', {}])
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    client = ret_values['client']
+    assert client['result']['context']
+    assert client['result']['context'] == 'testContext'
+
+
+def test_passes_through_websocket_request_to_on_subscribe(server):
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        client.subscribe({{
+            query: `subscription context {{
+                context
+            }}`,
+            variables: {{}},
+            }}, (error, result) => {{
+                if (error) {{
+                  console.log(JSON.stringify(error));
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    try:
+        subprocess.check_output(
+            ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
+    except:
+        while True:
+            mock = server.get_nowait()
+            if mock.name == 'on_subscribe':
+                mock.assert_called_once()
+                mock.assert_called_with_contains('websocket')
+                break
+
+
+def test_does_not_send_subscription_data_after_client_unsubscribes(server):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        setTimeout(function () {{
+            let subId = client.subscribe({{
+                query: `subscription useInfo($id: String) {{
+                  user(id: $id) {{
+                    id
+                    name
+                  }}
+                }}`,
+                operationName: 'useInfo',
+                variables: {{
+                  id: 3,
+                }},
+
+                }}, function (error, result) {{
+                }}
+            );
+            client.unsubscribe(subId);
+        }}, 100);
+        client.client.onmessage = (message) => {{
+            let msg = JSON.parse(message.data)
+            console.log(JSON.stringify({{[msg.type]: msg}}))
+        }};
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT),
+        json=['user', {}])
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    with pytest.raises(KeyError):
+        assert ret_values[SUBSCRIPTION_DATA]
+
+
+# Need to look into why this test is failing; current thrown code is 1006 not
+# 1002 like it should be (1006 more general than 1002 protocol error)
+def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const client = new WebSocket('ws://localhost:{1}/socket')
+        client.on('close', (code) => {{
+            console.log(JSON.stringify(code))
+          }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = []
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values.append(line)
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert ret_values[0] == 1002 or 1006
+
+
+def test_rejects_unparsable_message(server):
+
+    node_script = '''
+        module.paths.push('{0}');
+        WebSocket = require('ws');
+        const GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions';
+        const client = new WebSocket('ws://localhost:{1}/socket',
+        GRAPHQL_SUBSCRIPTIONS);
+        client.onmessage = (message) => {{
+            let msg = JSON.parse(message.data)
+            console.log(JSON.stringify({{[msg.type]: msg}}))
+            client.close();
+        }};
+        client.onopen = () => {{
+            client.send('HI');
+        }}
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert ret_values['subscription_fail']
+    assert len(ret_values['subscription_fail']['payload']['errors']) > 0
+
+
+def test_rejects_nonsense_message(server):
+
+    node_script = '''
+        module.paths.push('{0}');
+        WebSocket = require('ws');
+        const GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions';
+        const client = new WebSocket('ws://localhost:{1}/socket',
+        GRAPHQL_SUBSCRIPTIONS);
+        client.onmessage = (message) => {{
+            let msg = JSON.parse(message.data)
+            console.log(JSON.stringify({{[msg.type]: msg}}))
+            client.close();
+        }};
+        client.onopen = () => {{
+            client.send(JSON.stringify({{}}));
+        }}
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert ret_values['subscription_fail']
+    assert len(ret_values['subscription_fail']['payload']['errors']) > 0
+
+
+def test_does_not_crash_on_unsub_from_unknown_sub(server):
+
+    node_script = '''
+        module.paths.push('{0}');
+        WebSocket = require('ws');
+        const GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions';
+        const client = new WebSocket('ws://localhost:{1}/socket',
+        GRAPHQL_SUBSCRIPTIONS);
+        setTimeout(function () {{
+            client.onopen = () => {{
+                const SUBSCRIPTION_END = 'subscription_end';
+                let subEndMsg = {{type: SUBSCRIPTION_END, id: 'toString'}}
+                client.send(JSON.stringify(subEndMsg));
+            }}
+        }}, 200);
+        client.onmessage = (message) => {{
+            let msg = JSON.parse(message.data)
+            console.log(JSON.stringify({{[msg.type]: msg}}))
+        }};
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = []
+    while True:
+        try:
+            line = q.get_nowait()
+            ret_values.append(line)
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert len(ret_values) == 0
+
+
+def test_sends_back_any_type_of_error(server):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        client.subscribe({{
+            query: `invalid useInfo {{
+                error
+            }}`,
+            variables: {{}},
+        }}, function (errors, result) {{
+                client.unsubscribeAll();
+                if (errors) {{
+                    console.log(JSON.stringify({{'errors': errors}}))
+                }}
+                if (result) {{
+                    console.log(JSON.stringify({{'result': result}}))
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'),
+        TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(5)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert len(ret_values['errors']) > 0
