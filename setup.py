@@ -31,6 +31,6 @@ setup(
     ],
     tests_require=[
         'pytest', 'pytest-mock', 'fakeredis', 'graphene', 'subprocess32',
-        'flask', 'flask-graphql', 'flask-sockets', 'multiprocess'
+        'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
     ],
     include_package_data=True)
