@@ -8,7 +8,6 @@ from functools import wraps
 import copy
 import json
 import os
-import Queue
 import sys
 import threading
 import time
@@ -35,6 +34,11 @@ if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
 else:
     import subprocess
+
+if sys.version_info[0] < 3:
+    import Queue
+else:
+    import queue as Queue
 
 TEST_PORT = 5000
 KEEP_ALIVE_TEST_PORT = TEST_PORT + 1
