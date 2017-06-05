@@ -15,7 +15,7 @@ INIT_FAIL = 'init_fail'
 GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
 
 
-class ApolloSubscriptionServer(WebSocketApplication):
+class SubscriptionServer(WebSocketApplication):
     def __init__(self,
                  subscription_manager,
                  websocket,
@@ -37,7 +37,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
         self.connection_subscriptions = {}
         self.connection_context = {}
 
-        super(ApolloSubscriptionServer, self).__init__(websocket)
+        super(SubscriptionServer, self).__init__(websocket)
 
     def timer(self, callback, period):
         while True:

@@ -48,10 +48,10 @@ $ pip install graphql-subscriptions
 
 #### Methods
 - `publish(trigger_name, payload)`: Trigger name is the subscription or pubsub channel; payload is the mutation object or message that will end up being passed to the subscription root_value; method called inside of mutation resolve function
-- `subscribe(query, operation_name, callback, variables, context, format_error, format_response)`: Called by ApolloSubscriptionServer upon receiving a new subscription from a websocket.  Arguments are parsed by ApolloSubscriptionServer from the graphql subscription query
-- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the subscription manager instance -- returned from the `subscribe()` method and called by the ApolloSubscriptionServer
+- `subscribe(query, operation_name, callback, variables, context, format_error, format_response)`: Called by SubscriptionServer upon receiving a new subscription from a websocket.  Arguments are parsed by SubscriptionServer from the graphql subscription query
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the subscription manager instance -- returned from the `subscribe()` method and called by the SubscriptionServer
 
-### ApolloSubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
+### SubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
 #### Arguments
 - `subscription_manager`: A subscripton manager instance (required).
 - `websocket`: The websocket object passed in from your route handler (required).
@@ -78,7 +78,7 @@ from flask_sockets import Sockets
 from graphql_subscriptions import (
     SubscriptionManager,
     RedisPubsub,
-    ApolloSubscriptionServer
+    SubscriptionServer
 )
 
 app = Flask(__name__)
@@ -106,7 +106,7 @@ subscription_mgr = SubscriptionManager(schema, pubsub)
 # subscription app / server -- passing in subscription manager and websocket
 @sockets.route('/socket')
 def socket_channel(websocket):
-    subscription_server = ApolloSubscriptionServer(subscription_mgr, websocket)
+    subscription_server = SubscriptionServer(subscription_mgr, websocket)
     subscription_server.handle()
     return []
 

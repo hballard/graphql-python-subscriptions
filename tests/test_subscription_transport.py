@@ -25,7 +25,7 @@ import redis
 import requests
 
 from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
-                                   ApolloSubscriptionServer)
+                                   SubscriptionServer)
 
 from graphql_subscriptions.subscription_transport_ws import (
     SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA, KEEPALIVE)
@@ -264,7 +264,7 @@ def create_app(sub_mgr, schema, options):
 
     @sockets.route('/socket')
     def socket_channel(websocket):
-        subscription_server = ApolloSubscriptionServer(sub_mgr, websocket,
+        subscription_server = SubscriptionServer(sub_mgr, websocket,
                                                        **options)
         subscription_server.handle()
         return []
@@ -323,7 +323,7 @@ def server_with_events(sub_mgr, schema, events_options):
 
 def test_raise_exception_when_create_server_and_no_sub_mgr():
     with pytest.raises(AssertionError):
-        ApolloSubscriptionServer(None, None)
+        SubscriptionServer(None, None)
 
 
 def test_should_trigger_on_connect_if_client_connect_valid(server_with_events):
