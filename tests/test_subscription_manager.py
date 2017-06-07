@@ -262,8 +262,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr):
 
 
 def test_can_subscribe_to_more_than_one_trigger(sub_mgr):
-    class nonlocal:
-        trigger_count = 0
+    non_local = {'trigger_count': 0}
 
     query = 'subscription multiTrigger($filterBoolean: Boolean,\
             $uga: String){testFilterMulti(filterBoolean: $filterBoolean,\
@@ -278,10 +277,10 @@ def test_can_subscribe_to_more_than_one_trigger(sub_mgr):
                     assert True
                 else:
                     assert payload.data.get('testFilterMulti') == 'good_filter'
-                    nonlocal.trigger_count += 1
+                    non_local['trigger_count'] += 1
             except AssertionError as e:
                 sys.exit(e)
-        if nonlocal.trigger_count == 2:
+        if non_local['trigger_count'] == 2:
             sub_mgr.pubsub.greenlet.kill()
 
     def publish_and_unsubscribe_handler(sub_id):
