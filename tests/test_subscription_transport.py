@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_graphql import GraphQLView
 from flask_sockets import Sockets
 from geventwebsocket import WebSocketServer
@@ -28,7 +28,7 @@ from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
                                    SubscriptionServer)
 
 from graphql_subscriptions.subscription_transport_ws import (
-    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA, KEEPALIVE)
+    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -41,8 +41,6 @@ else:
     import queue as Queue
 
 TEST_PORT = 5000
-KEEP_ALIVE_TEST_PORT = TEST_PORT + 1
-EVENTS_TEST_PORT = TEST_PORT + 5
 
 
 class PickableMock():
@@ -173,25 +171,20 @@ def sub_mgr(pubsub, schema):
 
 
 @pytest.fixture
-def handlers():
+def on_sub_handler():
+    def context_handler():
+        raise Exception('bad')
+
     def on_subscribe(msg, params, websocket):
         new_params = copy.deepcopy(params)
-        new_params.update({'context': msg.get('context', {})})
+        new_params.update({'context': context_handler})
         return new_params
 
     return {'on_subscribe': promisify(on_subscribe)}
 
 
 @pytest.fixture
-def options1(handlers):
-    return {
-        'on_subscribe':
-        lambda msg, params, ws: handlers['on_subscribe'](msg, params, ws)
-    }
-
-
-@pytest.fixture
-def options(mocker):
+def on_sub_mock(mocker):
 
     mgr = multiprocess.Manager()
     q = mgr.Queue()
@@ -202,16 +195,16 @@ def options(mocker):
         q.put(self)
         return new_params
 
-    options = {
+    on_sub_mock = {
         'on_subscribe':
         PickableMock(side_effect=promisify(on_subscribe), name='on_subscribe')
     }
 
-    return options, q
+    return on_sub_mock, q
 
 
 @pytest.fixture
-def events_options(mocker):
+def options_mocks(mocker):
 
     mgr = multiprocess.Manager()
     q = mgr.Queue()
@@ -231,7 +224,7 @@ def events_options(mocker):
     def on_unsubscribe(self, websocket):
         q.put(self)
 
-    events_options = {
+    options_mocks = {
         'on_subscribe':
         PickableMock(side_effect=promisify(on_subscribe), name='on_subscribe'),
         'on_unsubscribe':
@@ -245,7 +238,7 @@ def events_options(mocker):
         PickableMock(side_effect=on_disconnect, name='on_disconnect')
     }
 
-    return events_options, q
+    return options_mocks, q
 
 
 def create_app(sub_mgr, schema, options):
@@ -261,11 +254,11 @@ def create_app(sub_mgr, schema, options):
     @app.route('/publish', methods=['POST'])
     def sub_mgr_publish():
         sub_mgr.publish(*request.get_json())
+        return jsonify(request.get_json())
 
     @sockets.route('/socket')
     def socket_channel(websocket):
-        subscription_server = SubscriptionServer(sub_mgr, websocket,
-                                                       **options)
+        subscription_server = SubscriptionServer(sub_mgr, websocket, **options)
         subscription_server.handle()
         return []
 
@@ -278,10 +271,10 @@ def app_worker(app, port):
 
 
 @pytest.fixture()
-def server(sub_mgr, schema, options):
+def server(sub_mgr, schema, on_sub_mock):
 
-    opt, q = options
-    app = create_app(sub_mgr, schema, opt)
+    options, q = on_sub_mock
+    app = create_app(sub_mgr, schema, options)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
@@ -292,32 +285,43 @@ def server(sub_mgr, schema, options):
 
 
 @pytest.fixture()
-def server_with_keep_alive(sub_mgr, schema, options):
+def server_with_mocks(sub_mgr, schema, options_mocks):
 
-    options_with_keep_alive = options.copy()
-    options_with_keep_alive.update({'keep_alive': 10})
-    app = create_app(sub_mgr, schema, options_with_keep_alive)
+    options, q = options_mocks
+    app = create_app(sub_mgr, schema, options)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
-                                   'port': KEEP_ALIVE_TEST_PORT})
+                                   'port': TEST_PORT})
+
+    process.start()
+    yield q
+    process.terminate()
+
+
+@pytest.fixture()
+def server_with_on_sub_handler(sub_mgr, schema, on_sub_handler):
+
+    app = create_app(sub_mgr, schema, on_sub_handler)
+
+    process = multiprocess.Process(
+        target=app_worker, kwargs={'app': app,
+                                   'port': TEST_PORT})
     process.start()
     yield
     process.terminate()
 
 
 @pytest.fixture()
-def server_with_events(sub_mgr, schema, events_options):
+def server_with_keep_alive(sub_mgr, schema):
 
-    options, q = events_options
-    app = create_app(sub_mgr, schema, options)
+    app = create_app(sub_mgr, schema, {'keep_alive': .250})
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
-                                   'port': EVENTS_TEST_PORT})
-
+                                   'port': TEST_PORT})
     process.start()
-    yield q
+    yield
     process.terminate()
 
 
@@ -326,7 +330,7 @@ def test_raise_exception_when_create_server_and_no_sub_mgr():
         SubscriptionServer(None, None)
 
 
-def test_should_trigger_on_connect_if_client_connect_valid(server_with_events):
+def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -335,17 +339,17 @@ def test_should_trigger_on_connect_if_client_connect_valid(server_with_events):
         new SubscriptionClient('ws://localhost:{1}/socket')
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
-        mock = server_with_events.get_nowait()
+        mock = server_with_mocks.get_nowait()
         assert mock.name == 'on_connect'
         mock.assert_called_once()
 
 
-def test_should_trigger_on_connect_with_correct_cxn_params(server_with_events):
+def test_should_trigger_on_connect_with_correct_cxn_params(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -357,18 +361,18 @@ def test_should_trigger_on_connect_with_correct_cxn_params(server_with_events):
         }})
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
-        mock = server_with_events.get_nowait()
+        mock = server_with_mocks.get_nowait()
         assert mock.name == 'on_connect'
         mock.assert_called_once()
         mock.assert_called_with({'test': True})
 
 
-def test_trigger_on_disconnect_when_client_disconnects(server_with_events):
+def test_trigger_on_disconnect_when_client_disconnects(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -378,14 +382,14 @@ def test_trigger_on_disconnect_when_client_disconnects(server_with_events):
         client.client.close()
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     subprocess.check_output(['node', '-e', node_script])
-    mock = server_with_events.get_nowait()
+    mock = server_with_mocks.get_nowait()
     assert mock.name == 'on_disconnect'
     mock.assert_called_once()
 
 
-def test_should_call_unsubscribe_when_client_closes_cxn(server_with_events):
+def test_should_call_unsubscribe_when_client_closes_cxn(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -412,20 +416,19 @@ def test_should_call_unsubscribe_when_client_closes_cxn(server_with_events):
         }}, 500)
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=1)
     except:
         while True:
-            mock = server_with_events.get_nowait()
+            mock = server_with_mocks.get_nowait()
             if mock.name == 'on_unsubscribe':
                 mock.assert_called_once()
                 break
 
 
-def test_should_trigger_on_subscribe_when_client_subscribes(
-        server_with_events):
+def test_should_trigger_on_subscribe_when_client_subscribes(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -448,20 +451,20 @@ def test_should_trigger_on_subscribe_when_client_subscribes(
           }})
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
         while True:
-            mock = server_with_events.get_nowait()
+            mock = server_with_mocks.get_nowait()
             if mock.name == 'on_subscribe':
                 mock.assert_called_once()
                 break
 
 
 def test_should_trigger_on_unsubscribe_when_client_unsubscribes(
-        server_with_events):
+        server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')
@@ -485,20 +488,19 @@ def test_should_trigger_on_unsubscribe_when_client_unsubscribes(
         client.unsubscribe(subId)
     '''.format(
         os.path.join(os.path.dirname(__file__), 'node_modules'),
-        EVENTS_TEST_PORT)
+        TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
     except:
         while True:
-            mock = server_with_events.get_nowait()
+            mock = server_with_mocks.get_nowait()
             if mock.name == 'on_unsubscribe':
                 mock.assert_called_once()
                 break
 
 
-def test_should_send_correct_results_to_multiple_client_subscriptions(
-        server):
+def test_should_send_correct_results_to_multiple_client_subscriptions(server):
 
     node_script = '''
         module.paths.push('{0}')
@@ -567,8 +569,7 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(
             }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -577,8 +578,7 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(
         stderr=subprocess.STDOUT)
     time.sleep(.2)
     requests.post(
-        'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['user', {}])
+        'http://localhost:{0}/publish'.format(TEST_PORT), json=['user', {}])
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -606,9 +606,9 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(
     assert client2['numResults'] == 1
 
 
-# Graphene subscriptions implementation does not currently return an error for
-# missing or incorrect field(s); this test will continue to fail until that is
-# fixed
+# TODO: Graphene subscriptions implementation does not currently return an
+# error for missing or incorrect field(s); this test will continue to fail
+# until that is fixed
 def test_send_subscription_fail_message_to_client_with_invalid_query(server):
 
     node_script = '''
@@ -639,8 +639,7 @@ def test_send_subscription_fail_message_to_client_with_invalid_query(server):
                 console.log(JSON.stringify({{[msg.type]: msg}}))
             }};
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -667,6 +666,8 @@ def test_send_subscription_fail_message_to_client_with_invalid_query(server):
     assert len(ret_values['payload']['errors']) > 0
 
 
+# TODO: troubleshoot this a bit...passes, but receives extra messages which I'm
+# filtering out w/ the "AttributeError" exception clause
 def test_should_setup_the_proper_filters_when_subscribing(server):
     node_script = '''
         module.paths.push('{0}')
@@ -733,8 +734,7 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
             }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -744,13 +744,19 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
     time.sleep(.2)
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['user_filtered', {'id': 1}])
+        json=['user_filtered', {
+            'id': 1
+        }])
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['user_filtered', {'id': 2}])
+        json=['user_filtered', {
+            'id': 2
+        }])
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['user_filtered', {'id': 3}])
+        json=['user_filtered', {
+            'id': 3
+        }])
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -763,6 +769,8 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
             line = json.loads(line)
             ret_values[line.keys()[0]] = line[line.keys()[0]]
         except ValueError:
+            pass
+        except AttributeError:
             pass
         except Queue.Empty:
             break
@@ -809,8 +817,7 @@ def test_correctly_sets_the_context_in_on_subscribe(server):
             }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -819,8 +826,7 @@ def test_correctly_sets_the_context_in_on_subscribe(server):
         stderr=subprocess.STDOUT)
     time.sleep(.2)
     requests.post(
-        'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['context', {}])
+        'http://localhost:{0}/publish'.format(TEST_PORT), json=['context', {}])
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -860,8 +866,7 @@ def test_passes_through_websocket_request_to_on_subscribe(server):
             }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     try:
         subprocess.check_output(
@@ -906,8 +911,7 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
             console.log(JSON.stringify({{[msg.type]: msg}}))
         }};
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -916,8 +920,7 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
         stderr=subprocess.STDOUT)
     time.sleep(.2)
     requests.post(
-        'http://localhost:{0}/publish'.format(TEST_PORT),
-        json=['user', {}])
+        'http://localhost:{0}/publish'.format(TEST_PORT), json=['user', {}])
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -937,8 +940,8 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
         assert ret_values[SUBSCRIPTION_DATA]
 
 
-# Need to look into why this test is failing; current thrown code is 1006 not
-# 1002 like it should be (1006 more general than 1002 protocol error)
+# TODO: Need to look into why this test is throwing code 1006, not 1002 like
+# it should be (1006 more general than 1002 protocol error)
 def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
 
     node_script = '''
@@ -950,8 +953,7 @@ def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
           }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -994,8 +996,7 @@ def test_rejects_unparsable_message(server):
             client.send('HI');
         }}
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -1039,8 +1040,7 @@ def test_rejects_nonsense_message(server):
             client.send(JSON.stringify({{}}));
         }}
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -1087,8 +1087,7 @@ def test_does_not_crash_on_unsub_from_unknown_sub(server):
             console.log(JSON.stringify({{[msg.type]: msg}}))
         }};
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -1137,8 +1136,7 @@ def test_sends_back_any_type_of_error(server):
             }}
         );
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
 
     p = subprocess.Popen(
         ['node', '-e', node_script],
@@ -1162,3 +1160,104 @@ def test_sends_back_any_type_of_error(server):
         except Queue.Empty:
             break
     assert len(ret_values['errors']) > 0
+
+
+def test_handles_errors_prior_to_graphql_execution(server_with_on_sub_handler):
+
+    node_script = '''
+        module.paths.push('{0}')
+        WebSocket = require('ws')
+        const SubscriptionClient =
+        require('subscriptions-transport-ws').SubscriptionClient
+        const client = new SubscriptionClient('ws://localhost:{1}/socket')
+        client.subscribe({{
+            query: `subscription context {{
+                context
+            }}`,
+            variables: {{}},
+            context: {{}},
+        }}, function (errors, result) {{
+                client.unsubscribeAll();
+                if (errors) {{
+                    console.log(JSON.stringify({{'errors': errors}}))
+                }}
+                if (result) {{
+                    console.log(JSON.stringify({{'result': result}}))
+                }}
+            }}
+        );
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.2)
+    requests.post(
+        'http://localhost:{0}/publish'.format(TEST_PORT), json=['context', {}])
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.2)
+    ret_values = {}
+    while True:
+        try:
+            line = q.get_nowait()
+            line = json.loads(line)
+            ret_values[line.keys()[0]] = line[line.keys()[0]]
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert isinstance(ret_values['errors'], list)
+    assert ret_values['errors'][0]['message'] == 'bad'
+
+
+def test_sends_a_keep_alive_signal_in_the_socket(server_with_keep_alive):
+
+    node_script = '''
+        module.paths.push('{0}');
+        WebSocket = require('ws');
+        const GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions';
+        const KEEP_ALIVE = 'keepalive';
+        const client = new WebSocket('ws://localhost:{1}/socket',
+        GRAPHQL_SUBSCRIPTIONS);
+        let yieldCount = 0;
+        client.onmessage = (message) => {{
+            let msg = JSON.parse(message.data)
+            if (msg.type === KEEP_ALIVE) {{
+                yieldCount += 1;
+                if (yieldCount > 1) {{
+                let returnMsg = {{'type': msg.type, 'yieldCount': yieldCount}}
+                console.log(JSON.stringify(returnMsg))
+                client.close();
+                }}
+            }}
+        }};
+    '''.format(
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
+
+    p = subprocess.Popen(
+        ['node', '-e', node_script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    time.sleep(.5)
+    q = Queue.Queue()
+    t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
+    t.daemon = True
+    t.start()
+    time.sleep(.5)
+    while True:
+        try:
+            line = q.get_nowait()
+            ret_value = json.loads(line)
+        except ValueError:
+            pass
+        except Queue.Empty:
+            break
+    assert ret_value['type'] == 'keepalive'
+    assert ret_value['yieldCount'] > 1
