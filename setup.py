@@ -29,6 +29,7 @@ setup(
     install_requires=[
         'gevent-websocket', 'redis', 'promise==1.0.1', 'graphql-core'
     ],
+    test_suite='pytest',
     tests_require=[
         'pytest', 'pytest-mock', 'fakeredis', 'graphene', 'subprocess32',
         'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
