@@ -27,8 +27,8 @@ import requests
 from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
                                    SubscriptionServer)
 
-from graphql_subscriptions.subscription_transport_ws import (
-    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
+from graphql_subscriptions.subscription_transport_ws import (SUBSCRIPTION_FAIL,
+                                                             SUBSCRIPTION_DATA)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -338,8 +338,7 @@ def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
         require('subscriptions-transport-ws').SubscriptionClient
         new SubscriptionClient('ws://localhost:{1}/socket')
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
@@ -360,8 +359,7 @@ def test_should_trigger_on_connect_with_correct_cxn_params(server_with_mocks):
         connectionParams,
         }})
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
@@ -381,8 +379,7 @@ def test_trigger_on_disconnect_when_client_disconnects(server_with_mocks):
         const client = new SubscriptionClient('ws://localhost:{1}/socket')
         client.client.close()
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     subprocess.check_output(['node', '-e', node_script])
     mock = server_with_mocks.get_nowait()
     assert mock.name == 'on_disconnect'
@@ -415,8 +412,7 @@ def test_should_call_unsubscribe_when_client_closes_cxn(server_with_mocks):
             client.client.close()
         }}, 500)
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=1)
@@ -450,8 +446,7 @@ def test_should_trigger_on_subscribe_when_client_subscribes(server_with_mocks):
             // nothing
           }})
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
@@ -487,8 +482,7 @@ def test_should_trigger_on_unsubscribe_when_client_unsubscribes(
           }})
         client.unsubscribe(subId)
     '''.format(
-        os.path.join(os.path.dirname(__file__), 'node_modules'),
-        TEST_PORT)
+        os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
             ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
@@ -960,7 +954,6 @@ def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    time.sleep(.2)
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -1003,7 +996,6 @@ def test_rejects_unparsable_message(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    time.sleep(.2)
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -1047,7 +1039,6 @@ def test_rejects_nonsense_message(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    time.sleep(.2)
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -1094,7 +1085,6 @@ def test_does_not_crash_on_unsub_from_unknown_sub(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    time.sleep(.2)
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
@@ -1245,7 +1235,6 @@ def test_sends_a_keep_alive_signal_in_the_socket(server_with_keep_alive):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    time.sleep(.5)
     q = Queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True

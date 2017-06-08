@@ -6,6 +6,11 @@ try:
 except (IOError, ImportError):
     long_description = open('README.md').read()
 
+tests_dep = [
+    'pytest', 'pytest-mock', 'fakeredis', 'graphene', 'subprocess32',
+    'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
+]
+
 setup(
     name='graphql-subscriptions',
     version='0.1.8',
@@ -27,11 +32,11 @@ setup(
         'License :: OSI Approved :: MIT License'
     ],
     install_requires=[
-        'gevent-websocket', 'redis', 'promise==1.0.1', 'graphql-core'
+        'gevent-websocket', 'redis', 'graphql-core', 'promise<=1.0.1'
     ],
     test_suite='pytest',
-    tests_require=[
-        'pytest', 'pytest-mock', 'fakeredis', 'graphene', 'subprocess32',
-        'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
-    ],
+    tests_require=tests_dep,
+    extras_require={
+        'test': tests_dep
+    },
     include_package_data=True)
