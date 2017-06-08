@@ -15,7 +15,7 @@ INIT_FAIL = 'init_fail'
 GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
 
 
-class ApolloSubscriptionServer(WebSocketApplication):
+class SubscriptionServer(WebSocketApplication):
     def __init__(self,
                  subscription_manager,
                  websocket,
@@ -37,7 +37,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
         self.connection_subscriptions = {}
         self.connection_context = {}
 
-        super(ApolloSubscriptionServer, self).__init__(websocket)
+        super(SubscriptionServer, self).__init__(websocket)
 
     def timer(self, callback, period):
         while True:
@@ -77,13 +77,11 @@ class ApolloSubscriptionServer(WebSocketApplication):
         if msg is None:
             return
 
-        class nonlocal:
-            on_init_resolve = None
-            on_init_reject = None
+        non_local = {'on_init_resolve': None, 'on_init_reject': None}
 
         def init_promise_handler(resolve, reject):
-            nonlocal.on_init_resolve = resolve
-            nonlocal.on_init_reject = reject
+            non_local['on_init_resolve'] = resolve
+            non_local['on_init_reject'] = reject
 
         self.connection_context['init_promise'] = Promise(init_promise_handler)
 
@@ -107,7 +105,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         self.on_connect(
                             parsed_message.get('payload'), self.ws))
 
-                nonlocal.on_init_resolve(on_connect_promise)
+                non_local['on_init_resolve'](on_connect_promise)
 
                 def init_success_promise_handler(result):
                     if not result:
@@ -133,7 +131,8 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         'callback': None,
                         'variables': parsed_message.get('variables'),
                         'context': init_result if isinstance(
-                            init_result, dict) else {},
+                            init_result, dict) else
+                            parsed_message.get('context', {}),
                         'format_error': None,
                         'format_response': None
                     }
@@ -151,8 +150,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                     def promised_params_handler(params):
                         if not isinstance(params, dict):
                             error = 'Invalid params returned from\
-                                    OnSubscribe!  Return value must\
-                                    be an dict'
+OnSubscribe!  Return value must be an dict'
 
                             self.send_subscription_fail(
                                 sub_id, {'errors': [{
@@ -164,15 +162,15 @@ class ApolloSubscriptionServer(WebSocketApplication):
                             if not error:
                                 self.send_subscription_data(
                                     sub_id, {'data': result.data})
-                            elif error.errors:
-                                self.send_subscription_data(
-                                    sub_id, {'errors': error.errors})
                             elif error.message:
                                 self.send_subscription_data(
                                     sub_id,
                                     {'errors': [{
                                         'message': error.message
                                     }]})
+                            elif error.errors:
+                                self.send_subscription_data(
+                                    sub_id, {'errors': error.errors})
                             else:
                                 self.send_subscription_data(
                                     sub_id,
@@ -218,7 +216,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                 # not sure if this behavior is correct or
                 # not per promises A spec...need to
                 # investigate
-                nonlocal.on_init_resolve(Promise.resolve(True))
+                non_local['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
                     subscription_start_promise_handler)
@@ -231,7 +229,7 @@ class ApolloSubscriptionServer(WebSocketApplication):
                         del self.connection_subscriptions[sub_id]
 
                 # same rationale as above
-                nonlocal.on_init_resolve(Promise.resolve(True))
+                non_local['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
                     subscription_end_promise_handler)

@@ -2,11 +2,11 @@
 #### (Work in Progress!)
 A port of apollographql subscriptions for python, using gevent websockets and redis
 
-This is a implementation of apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) in Python.  It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of [syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
+This is an implementation of graphql subscriptions in Python.  It uses the apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) packages as its basis.  It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of [syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
 
-Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.  The api is below, but if you want more information, consult the apollo graphql libraries referenced above.
+Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.  The api is below, but if you want more information, consult the apollo graphql libraries referenced above, and specifcally as it relates to using their graphql subscriptions client.
 
-Initial implementation.  Currently only works with Python 2.
+Initial implementation.  Good test coverage.  Currently only works with Python 2.
 
 ## Installation
 ```
@@ -48,10 +48,10 @@ $ pip install graphql-subscriptions
 
 #### Methods
 - `publish(trigger_name, payload)`: Trigger name is the subscription or pubsub channel; payload is the mutation object or message that will end up being passed to the subscription root_value; method called inside of mutation resolve function
-- `subscribe(query, operation_name, callback, variables, context, format_error, format_response)`: Called by ApolloSubscriptionServer upon receiving a new subscription from a websocket.  Arguments are parsed by ApolloSubscriptionServer from the graphql subscription query
-- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the subscription manager instance -- returned from the `subscribe()` method and called by the ApolloSubscriptionServer
+- `subscribe(query, operation_name, callback, variables, context, format_error, format_response)`: Called by SubscriptionServer upon receiving a new subscription from a websocket.  Arguments are parsed by SubscriptionServer from the graphql subscription query
+- `unsubscribe(sub_id)`: Sub_id is the subscription ID that is being tracked by the subscription manager instance -- returned from the `subscribe()` method and called by the SubscriptionServer
 
-### ApolloSubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
+### SubscriptionServer(subscription_manager, websocket, keep_alive=None, on_subscribe=None, on_unsubscribe=None, on_connect=None, on_disconnect=None)
 #### Arguments
 - `subscription_manager`: A subscripton manager instance (required).
 - `websocket`: The websocket object passed in from your route handler (required).
@@ -78,7 +78,7 @@ from flask_sockets import Sockets
 from graphql_subscriptions import (
     SubscriptionManager,
     RedisPubsub,
-    ApolloSubscriptionServer
+    SubscriptionServer
 )
 
 app = Flask(__name__)
@@ -106,7 +106,7 @@ subscription_mgr = SubscriptionManager(schema, pubsub)
 # subscription app / server -- passing in subscription manager and websocket
 @sockets.route('/socket')
 def socket_channel(websocket):
-    subscription_server = ApolloSubscriptionServer(subscription_mgr, websocket)
+    subscription_server = SubscriptionServer(subscription_mgr, websocket)
     subscription_server.handle()
     return []
 
