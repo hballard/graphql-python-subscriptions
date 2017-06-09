@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+import sys
 
 try:
     import pypandoc
@@ -7,9 +8,12 @@ except (IOError, ImportError):
     long_description = open('README.md').read()
 
 tests_dep = [
-    'pytest', 'pytest-mock', 'fakeredis', 'graphene', 'subprocess32',
+    'pytest', 'pytest-mock', 'fakeredis', 'graphene',
     'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
 ]
+
+if sys.version_info[0] < 3:
+    tests_dep.append('subprocess32')
 
 setup(
     name='graphql-subscriptions',

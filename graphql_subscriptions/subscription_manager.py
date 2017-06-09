@@ -1,5 +1,9 @@
-import cPickle
+from future import standard_library
+standard_library.install_aliases()
+from builtins import filter
+from builtins import object
 from types import FunctionType
+import pickle
 
 from graphql import parse, validate, specified_rules, value_from_ast, execute
 from graphql.language.ast import OperationDefinition
@@ -21,13 +25,13 @@ class RedisPubsub(object):
         self.greenlet = None
 
     def publish(self, trigger_name, message):
-        self.redis.publish(trigger_name, cPickle.dumps(message))
+        self.redis.publish(trigger_name, pickle.dumps(message))
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
         self.sub_id_counter += 1
         try:
-            if trigger_name not in self.subscriptions.values()[0]:
+            if trigger_name not in list(self.subscriptions.values())[0]:
                 self.pubsub.subscribe(trigger_name)
         except IndexError:
             self.pubsub.subscribe(trigger_name)
@@ -42,7 +46,7 @@ class RedisPubsub(object):
         trigger_name, on_message_handler = self.subscriptions[sub_id]
         del self.subscriptions[sub_id]
         try:
-            if trigger_name not in self.subscriptions.values()[0]:
+            if trigger_name not in list(self.subscriptions.values())[0]:
                 self.pubsub.unsubscribe(trigger_name)
         except IndexError:
             self.pubsub.unsubscribe(trigger_name)
@@ -57,9 +61,9 @@ class RedisPubsub(object):
             gevent.sleep(.001)
 
     def handle_message(self, message):
-        for sub_id, trigger_map in self.subscriptions.iteritems():
+        for sub_id, trigger_map in self.subscriptions.items():
             if trigger_map[0] == message['channel']:
-                trigger_map[1](cPickle.loads(message['data']))
+                trigger_map[1](pickle.loads(message['data']))
 
 
 class ValidationError(Exception):
@@ -105,7 +109,7 @@ class SubscriptionManager(object):
                     arg_definition = [
                         arg_def
                         for _, arg_def in fields.get(subscription_name)
-                        .args.iteritems() if arg_def.out_name == arg.name.value
+                        .args.items() if arg_def.out_name == arg.name.value
                     ][0]
 
                     args[arg_definition.out_name] = value_from_ast(
@@ -131,7 +135,7 @@ class SubscriptionManager(object):
         self.subscriptions[external_subscription_id] = []
         subscription_promises = []
 
-        for trigger_name in trigger_map.viewkeys():
+        for trigger_name in trigger_map.keys():
             try:
                 channel_options = trigger_map[trigger_name].get(
                     'channel_options', {})
@@ -156,7 +160,7 @@ class SubscriptionManager(object):
                         return context
 
                 def filter_func_promise_handler(context):
-                    return Promise.all([context, filter(root_value, context)])
+                    return Promise.all([context, list(filter(root_value, context))])
 
                 def context_do_execute_handler(result):
                     context, do_execute = result

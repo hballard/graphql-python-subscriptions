@@ -1,7 +1,8 @@
-import json
-import gevent
+from builtins import str
 from geventwebsocket import WebSocketApplication
 from promise import Promise
+import gevent
+import json
 
 SUBSCRIPTION_FAIL = 'subscription_fail'
 SUBSCRIPTION_END = 'subscription_end'
@@ -66,7 +67,7 @@ class SubscriptionServer(WebSocketApplication):
                                             self.keep_alive)
 
     def on_close(self, reason):
-        for sub_id in self.connection_subscriptions.keys():
+        for sub_id in list(self.connection_subscriptions.keys()):
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
 
