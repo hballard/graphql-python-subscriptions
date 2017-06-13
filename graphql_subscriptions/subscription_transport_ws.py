@@ -160,16 +160,17 @@ OnSubscribe!  Return value must be an dict'
                             raise TypeError(error)
 
                         def params_callback(error, result):
+                            # import ipdb; ipdb.set_trace()
                             if not error:
                                 self.send_subscription_data(
                                     sub_id, {'data': result.data})
-                            elif error.message:
+                            elif hasattr(error, 'message'):
                                 self.send_subscription_data(
                                     sub_id,
                                     {'errors': [{
                                         'message': error.message
                                     }]})
-                            elif error.errors:
+                            elif hasattr(error, 'errors'):
                                 self.send_subscription_data(
                                     sub_id, {'errors': error.errors})
                             else:
@@ -188,10 +189,10 @@ OnSubscribe!  Return value must be an dict'
                         self.send_subscription_success(sub_id)
 
                     def error_catch_handler(e):
-                        if e.errors:
+                        if hasattr(e, 'errors'):
                             self.send_subscription_fail(
                                 sub_id, {'errors': e.errors})
-                        elif e.message:
+                        elif hasattr(e, 'message'):
                             self.send_subscription_fail(
                                 sub_id, {'errors': [{
                                     'message': e.message

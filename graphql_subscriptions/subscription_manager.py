@@ -1,6 +1,5 @@
 from future import standard_library
 standard_library.install_aliases()
-from builtins import filter
 from builtins import object
 from types import FunctionType
 import pickle
@@ -61,8 +60,10 @@ class RedisPubsub(object):
             gevent.sleep(.001)
 
     def handle_message(self, message):
+        if isinstance(message['channel'], bytes):
+            channel = message['channel'].decode()
         for sub_id, trigger_map in self.subscriptions.items():
-            if trigger_map[0] == message['channel']:
+            if trigger_map[0] == channel:
                 trigger_map[1](pickle.loads(message['data']))
 
 
@@ -141,14 +142,14 @@ class SubscriptionManager(object):
                     'channel_options', {})
                 filter = trigger_map[trigger_name].get('filter',
                                                        lambda arg1, arg2: True)
-            # TODO: Think about this some more...the Apollo library
-            # let's all messages through by default, even if
-            # the users incorrectly uses the setup_funcs (does not
-            # use 'filter' or 'channel_options' keys); I think it
-            # would be better to raise an exception here
             except AttributeError:
                 channel_options = {}
 
+                # TODO: Think about this some more...the Apollo library
+                # let's all messages through by default, even if
+                # the users incorrectly uses the setup_funcs (does not
+                # use 'filter' or 'channel_options' keys); I think it
+                # would be better to raise an exception here
                 def filter(arg1, arg2):
                     return True
 
@@ -160,7 +161,7 @@ class SubscriptionManager(object):
                         return context
 
                 def filter_func_promise_handler(context):
-                    return Promise.all([context, list(filter(root_value, context))])
+                    return Promise.all([context, filter(root_value, context)])
 
                 def context_do_execute_handler(result):
                     context, do_execute = result

@@ -451,7 +451,7 @@ def test_calls_the_error_callback_if_context_func_throws_error(sub_mgr):
     def callback(err, payload):
         try:
             assert payload is None
-            assert err.message == 'context error'
+            assert str(err) == 'context error'
             sub_mgr.pubsub.greenlet.kill()
         except AssertionError as e:
             sys.exit(e)
