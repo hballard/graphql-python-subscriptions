@@ -580,7 +580,9 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -648,7 +650,9 @@ def test_send_subscription_fail_message_to_client_with_invalid_query(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -758,7 +762,9 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -828,7 +834,9 @@ def test_correctly_sets_the_context_in_on_subscribe(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -922,7 +930,9 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -961,7 +971,9 @@ def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
     ret_values = []
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values.append(line)
         except ValueError:
@@ -1003,7 +1015,9 @@ def test_rejects_unparsable_message(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -1046,7 +1060,9 @@ def test_rejects_nonsense_message(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -1141,7 +1157,9 @@ def test_sends_back_any_type_of_error(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -1194,7 +1212,9 @@ def test_handles_errors_prior_to_graphql_execution(server_with_on_sub_handler):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
@@ -1241,7 +1261,9 @@ def test_sends_a_keep_alive_signal_in_the_socket(server_with_keep_alive):
     time.sleep(.5)
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             ret_value = json.loads(line)
         except ValueError:
             pass
