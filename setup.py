@@ -17,7 +17,7 @@ if sys.version_info[0] < 3:
 
 setup(
     name='graphql-subscriptions',
-    version='0.1.8',
+    version='0.1.9',
     author='Heath Ballard',
     author_email='heath.ballard@gmail.com',
     description=('A port of apollo-graphql subscriptions for python, using\
@@ -33,6 +33,10 @@ setup(
         'Environment :: Web Environment',
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
         'License :: OSI Approved :: MIT License'
     ],
     install_requires=[
