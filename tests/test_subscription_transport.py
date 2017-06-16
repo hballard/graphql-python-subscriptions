@@ -4,6 +4,9 @@
 # "cd" to the "tests" directory and "npm install".  Make sure you have nodejs
 # installed in your $PATH.
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import object
 from functools import wraps
 import copy
 import json
@@ -17,6 +20,7 @@ from flask_graphql import GraphQLView
 from flask_sockets import Sockets
 from geventwebsocket import WebSocketServer
 from promise import Promise
+import queue
 import fakeredis
 import graphene
 import multiprocess
@@ -35,15 +39,10 @@ if os.name == 'posix' and sys.version_info[0] < 3:
 else:
     import subprocess
 
-if sys.version_info[0] < 3:
-    import Queue
-else:
-    import queue as Queue
-
 TEST_PORT = 5000
 
 
-class PickableMock():
+class PickableMock(object):
     def __init__(self, return_value=None, side_effect=None, name=None):
         self._return_value = return_value
         self._side_effect = side_effect
@@ -573,7 +572,7 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(server):
     time.sleep(.2)
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT), json=['user', {}])
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -581,12 +580,14 @@ def test_should_send_correct_results_to_multiple_client_subscriptions(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     client = ret_values['client']
     assert client['result']['user']
@@ -641,7 +642,7 @@ def test_send_subscription_fail_message_to_client_with_invalid_query(server):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     time.sleep(.2)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -649,12 +650,14 @@ def test_send_subscription_fail_message_to_client_with_invalid_query(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert ret_values['type'] == SUBSCRIPTION_FAIL
     assert len(ret_values['payload']['errors']) > 0
@@ -751,7 +754,7 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
         json=['user_filtered', {
             'id': 3
         }])
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -759,14 +762,16 @@ def test_should_setup_the_proper_filters_when_subscribing(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
         except AttributeError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     client = ret_values['client']
     assert client['result']['userFiltered']
@@ -821,7 +826,7 @@ def test_correctly_sets_the_context_in_on_subscribe(server):
     time.sleep(.2)
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT), json=['context', {}])
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -829,12 +834,14 @@ def test_correctly_sets_the_context_in_on_subscribe(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     client = ret_values['client']
     assert client['result']['context']
@@ -915,7 +922,7 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
     time.sleep(.2)
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT), json=['user', {}])
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -923,12 +930,14 @@ def test_does_not_send_subscription_data_after_client_unsubscribes(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     with pytest.raises(KeyError):
         assert ret_values[SUBSCRIPTION_DATA]
@@ -954,7 +963,7 @@ def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -962,12 +971,14 @@ def test_rejects_client_that_does_not_specifiy_a_supported_protocol(server):
     ret_values = []
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
             ret_values.append(line)
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert ret_values[0] == 1002 or 1006
 
@@ -996,7 +1007,7 @@ def test_rejects_unparsable_message(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -1004,12 +1015,14 @@ def test_rejects_unparsable_message(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert ret_values['subscription_fail']
     assert len(ret_values['subscription_fail']['payload']['errors']) > 0
@@ -1039,7 +1052,7 @@ def test_rejects_nonsense_message(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -1047,12 +1060,14 @@ def test_rejects_nonsense_message(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert ret_values['subscription_fail']
     assert len(ret_values['subscription_fail']['payload']['errors']) > 0
@@ -1085,7 +1100,7 @@ def test_does_not_crash_on_unsub_from_unknown_sub(server):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -1097,7 +1112,7 @@ def test_does_not_crash_on_unsub_from_unknown_sub(server):
             ret_values.append(line)
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert len(ret_values) == 0
 
@@ -1134,7 +1149,7 @@ def test_sends_back_any_type_of_error(server):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     time.sleep(5)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -1142,12 +1157,14 @@ def test_sends_back_any_type_of_error(server):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert len(ret_values['errors']) > 0
 
@@ -1187,7 +1204,7 @@ def test_handles_errors_prior_to_graphql_execution(server_with_on_sub_handler):
     time.sleep(.2)
     requests.post(
         'http://localhost:{0}/publish'.format(TEST_PORT), json=['context', {}])
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
@@ -1195,12 +1212,14 @@ def test_handles_errors_prior_to_graphql_execution(server_with_on_sub_handler):
     ret_values = {}
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             line = json.loads(line)
-            ret_values[line.keys()[0]] = line[line.keys()[0]]
+            ret_values[list(line.keys())[0]] = line[list(line.keys())[0]]
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert isinstance(ret_values['errors'], list)
     assert ret_values['errors'][0]['message'] == 'bad'
@@ -1235,18 +1254,20 @@ def test_sends_a_keep_alive_signal_in_the_socket(server_with_keep_alive):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    q = Queue.Queue()
+    q = queue.Queue()
     t = threading.Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True
     t.start()
     time.sleep(.5)
     while True:
         try:
-            line = q.get_nowait()
+            _line = q.get_nowait()
+            if isinstance(_line, bytes):
+                line = _line.decode()
             ret_value = json.loads(line)
         except ValueError:
             pass
-        except Queue.Empty:
+        except queue.Empty:
             break
     assert ret_value['type'] == 'keepalive'
     assert ret_value['yieldCount'] > 1

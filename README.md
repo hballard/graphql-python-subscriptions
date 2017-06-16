@@ -6,7 +6,7 @@ This is an implementation of graphql subscriptions in Python.  It uses the apoll
 
 Meant to be used in conjunction with [graphql-python](https://github.com/graphql-python) / [graphene](http://graphene-python.org/) server and [apollo-client](http://dev.apollodata.com/) for graphql.  The api is below, but if you want more information, consult the apollo graphql libraries referenced above, and specifcally as it relates to using their graphql subscriptions client.
 
-Initial implementation.  Good test coverage.  Currently only works with Python 2.
+Initial implementation.  Good test coverage.  Works with both Python 2 / 3.
 
 ## Installation
 ```

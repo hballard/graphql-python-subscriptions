@@ -1,7 +1,8 @@
-import json
-import gevent
+from builtins import str
 from geventwebsocket import WebSocketApplication
 from promise import Promise
+import gevent
+import json
 
 SUBSCRIPTION_FAIL = 'subscription_fail'
 SUBSCRIPTION_END = 'subscription_end'
@@ -66,7 +67,7 @@ class SubscriptionServer(WebSocketApplication):
                                             self.keep_alive)
 
     def on_close(self, reason):
-        for sub_id in self.connection_subscriptions.keys():
+        for sub_id in list(self.connection_subscriptions.keys()):
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
 
@@ -159,16 +160,17 @@ OnSubscribe!  Return value must be an dict'
                             raise TypeError(error)
 
                         def params_callback(error, result):
+                            # import ipdb; ipdb.set_trace()
                             if not error:
                                 self.send_subscription_data(
                                     sub_id, {'data': result.data})
-                            elif error.message:
+                            elif hasattr(error, 'message'):
                                 self.send_subscription_data(
                                     sub_id,
                                     {'errors': [{
                                         'message': error.message
                                     }]})
-                            elif error.errors:
+                            elif hasattr(error, 'errors'):
                                 self.send_subscription_data(
                                     sub_id, {'errors': error.errors})
                             else:
@@ -187,10 +189,10 @@ OnSubscribe!  Return value must be an dict'
                         self.send_subscription_success(sub_id)
 
                     def error_catch_handler(e):
-                        if e.errors:
+                        if hasattr(e, 'errors'):
                             self.send_subscription_fail(
                                 sub_id, {'errors': e.errors})
-                        elif e.message:
+                        elif hasattr(e, 'message'):
                             self.send_subscription_fail(
                                 sub_id, {'errors': [{
                                     'message': e.message
