@@ -1,22 +1,14 @@
 from builtins import str
-from geventwebsocket import WebSocketApplication
 from promise import Promise
 import gevent
 import json
 
-SUBSCRIPTION_FAIL = 'subscription_fail'
-SUBSCRIPTION_END = 'subscription_end'
-SUBSCRIPTION_DATA = 'subscription_data'
-SUBSCRIPTION_START = 'subscription_start'
-SUBSCRIPTION_SUCCESS = 'subscription_success'
-KEEPALIVE = 'keepalive'
-INIT = 'init'
-INIT_SUCCESS = 'init_success'
-INIT_FAIL = 'init_fail'
-GRAPHQL_SUBSCRIPTIONS = 'graphql-subscriptions'
+from .protocols import (SUBSCRIPTION_FAIL, SUBSCRIPTION_END, SUBSCRIPTION_DATA,
+                        SUBSCRIPTION_START, SUBSCRIPTION_SUCCESS, KEEPALIVE,
+                        INIT, INIT_SUCCESS, INIT_FAIL, GRAPHQL_SUBSCRIPTIONS)
 
 
-class SubscriptionServer(WebSocketApplication):
+class BaseSubscriptionServer(object):
     def __init__(self,
                  subscription_manager,
                  websocket,
@@ -38,7 +30,7 @@ class SubscriptionServer(WebSocketApplication):
         self.connection_subscriptions = {}
         self.connection_context = {}
 
-        super(SubscriptionServer, self).__init__(websocket)
+        super(BaseSubscriptionServer, self).__init__(websocket)
 
     def timer(self, callback, period):
         while True:
@@ -127,15 +119,21 @@ class SubscriptionServer(WebSocketApplication):
 
                 def subscription_start_promise_handler(init_result):
                     base_params = {
-                        'query': parsed_message.get('query'),
-                        'operation_name': parsed_message.get('operation_name'),
-                        'callback': None,
-                        'variables': parsed_message.get('variables'),
-                        'context': init_result if isinstance(
-                            init_result, dict) else
-                            parsed_message.get('context', {}),
-                        'format_error': None,
-                        'format_response': None
+                        'query':
+                        parsed_message.get('query'),
+                        'operation_name':
+                        parsed_message.get('operation_name'),
+                        'callback':
+                        None,
+                        'variables':
+                        parsed_message.get('variables'),
+                        'context':
+                        init_result if isinstance(init_result, dict) else
+                        parsed_message.get('context', {}),
+                        'format_error':
+                        None,
+                        'format_response':
+                        None
                     }
                     promised_params = Promise.resolve(base_params)
 
@@ -160,7 +158,6 @@ OnSubscribe!  Return value must be an dict'
                             raise TypeError(error)
 
                         def params_callback(error, result):
-                            # import ipdb; ipdb.set_trace()
                             if not error:
                                 self.send_subscription_data(
                                     sub_id, {'data': result.data})
