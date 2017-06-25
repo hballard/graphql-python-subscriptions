@@ -14,15 +14,15 @@ from graphql_subscriptions.subscription_manager.validation import (
 from graphql_subscriptions.executors.gevent import GeventExecutor
 
 
+@pytest.fixture(params=[GeventExecutor])
+def executor(request):
+    return request.param
+
+
 @pytest.fixture
-def pubsub(monkeypatch):
+def pubsub(monkeypatch, executor):
     monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
-    return RedisPubsub()
-
-
-@pytest.fixture
-def executor():
-    return GeventExecutor()
+    return RedisPubsub(executor=executor)
 
 
 @pytest.mark.parametrize('test_input, expected', [('test', 'test'), ({

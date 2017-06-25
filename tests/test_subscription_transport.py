@@ -28,9 +28,10 @@ import pytest
 import redis
 import requests
 
-from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
-                                   SubscriptionServer)
-
+from graphql_subscriptions import RedisPubsub, SubscriptionManager
+from graphql_subscriptions.executors.gevent import GeventExecutor, GeventMixin
+from graphql_subscriptions.subscription_transport_ws import (
+    BaseSubscriptionServer)
 from graphql_subscriptions.subscription_transport_ws.protocols import (
      SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
 
@@ -114,10 +115,23 @@ def data():
     }
 
 
+@pytest.fixture(params=[GeventExecutor])
+def executor(request):
+    return request.param
+
+
 @pytest.fixture
-def pubsub(monkeypatch):
+def pubsub(monkeypatch, executor):
     monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
-    return RedisPubsub()
+    return RedisPubsub(executor=executor)
+
+
+@pytest.fixture
+def sub_server(executor):
+    class GeventSubscriptionServer(BaseSubscriptionServer, GeventMixin):
+        pass
+    if executor == GeventExecutor:
+        return GeventSubscriptionServer
 
 
 @pytest.fixture
@@ -240,7 +254,7 @@ def options_mocks(mocker):
     return options_mocks, q
 
 
-def create_app(sub_mgr, schema, options):
+def create_app(sub_mgr, schema, options, executor, sub_server):
     app = Flask(__name__)
     sockets = Sockets(app)
 
@@ -257,7 +271,8 @@ def create_app(sub_mgr, schema, options):
 
     @sockets.route('/socket')
     def socket_channel(websocket):
-        subscription_server = SubscriptionServer(sub_mgr, websocket, **options)
+        subscription_server = sub_server(sub_mgr, websocket,
+                                         executor, **options)
         subscription_server.handle()
         return []
 
@@ -269,11 +284,11 @@ def app_worker(app, port):
     server.serve_forever()
 
 
-@pytest.fixture()
-def server(sub_mgr, schema, on_sub_mock):
+@pytest.fixture
+def server(sub_mgr, executor, sub_server, schema, on_sub_mock):
 
     options, q = on_sub_mock
-    app = create_app(sub_mgr, schema, options)
+    app = create_app(sub_mgr, schema, options, executor, sub_server)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
@@ -283,11 +298,12 @@ def server(sub_mgr, schema, on_sub_mock):
     process.terminate()
 
 
-@pytest.fixture()
-def server_with_mocks(sub_mgr, schema, options_mocks):
+@pytest.fixture
+def server_with_mocks(sub_mgr, executor, sub_server, schema,
+                      options_mocks):
 
     options, q = options_mocks
-    app = create_app(sub_mgr, schema, options)
+    app = create_app(sub_mgr, schema, options, executor, sub_server)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
@@ -298,23 +314,12 @@ def server_with_mocks(sub_mgr, schema, options_mocks):
     process.terminate()
 
 
-@pytest.fixture()
-def server_with_on_sub_handler(sub_mgr, schema, on_sub_handler):
+@pytest.fixture
+def server_with_on_sub_handler(sub_mgr, executor, sub_server, schema,
+                               on_sub_handler):
 
-    app = create_app(sub_mgr, schema, on_sub_handler)
-
-    process = multiprocess.Process(
-        target=app_worker, kwargs={'app': app,
-                                   'port': TEST_PORT})
-    process.start()
-    yield
-    process.terminate()
-
-
-@pytest.fixture()
-def server_with_keep_alive(sub_mgr, schema):
-
-    app = create_app(sub_mgr, schema, {'keep_alive': .250})
+    app = create_app(sub_mgr, schema, on_sub_handler, executor,
+                     sub_server)
 
     process = multiprocess.Process(
         target=app_worker, kwargs={'app': app,
@@ -324,9 +329,23 @@ def server_with_keep_alive(sub_mgr, schema):
     process.terminate()
 
 
-def test_raise_exception_when_create_server_and_no_sub_mgr():
+@pytest.fixture
+def server_with_keep_alive(sub_mgr, executor, sub_server, schema):
+
+    app = create_app(sub_mgr, schema, {'keep_alive': .250}, executor,
+                     sub_server)
+
+    process = multiprocess.Process(
+        target=app_worker, kwargs={'app': app,
+                                   'port': TEST_PORT})
+    process.start()
+    yield
+    process.terminate()
+
+
+def test_raise_exception_when_create_server_and_no_sub_mgr(sub_server):
     with pytest.raises(AssertionError):
-        SubscriptionServer(None, None)
+        sub_server(None, None)
 
 
 def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
