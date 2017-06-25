@@ -9,7 +9,7 @@ import pytest
 import redis
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
-from graphql_subscriptions.validation import SubscriptionHasSingleRootField
+from graphql_subscriptions.subscription_manager.validation import SubscriptionHasSingleRootField
 
 
 @pytest.fixture
