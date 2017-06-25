@@ -125,7 +125,8 @@ class SubscriptionManager(object):
             subscription_promises.append(
                 self.pubsub.
                 subscribe(trigger_name, on_message, channel_options).then(
-                    lambda id: self.subscriptions[external_subscription_id].append(id)
+                    lambda id: self.subscriptions[external_subscription_id].
+                    append(id)
                 ))
 
         return Promise.all(subscription_promises).then(

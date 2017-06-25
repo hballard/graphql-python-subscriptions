@@ -9,7 +9,9 @@ import pytest
 import redis
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
-from graphql_subscriptions.subscription_manager.validation import SubscriptionHasSingleRootField
+from graphql_subscriptions.subscription_manager.validation import (
+     SubscriptionHasSingleRootField)
+from graphql_subscriptions.executors.gevent import GeventExecutor
 
 
 @pytest.fixture
@@ -18,29 +20,31 @@ def pubsub(monkeypatch):
     return RedisPubsub()
 
 
+@pytest.fixture
+def executor():
+    return GeventExecutor()
+
+
 @pytest.mark.parametrize('test_input, expected', [('test', 'test'), ({
-    1: 'test'
-}, {
-    1: 'test'
-}), (None, None)])
-def test_pubsub_subscribe_and_publish(pubsub, test_input, expected):
+    1: 'test'}, {1: 'test'}), (None, None)])
+def test_pubsub_subscribe_and_publish(pubsub, executor, test_input, expected):
     def message_callback(message):
         try:
             assert message == expected
-            pubsub.greenlet.kill()
+            executor.kill(pubsub.coro)
         except AssertionError as e:
             sys.exit(e)
 
     def publish_callback(sub_id):
         assert pubsub.publish('a', test_input)
-        pubsub.greenlet.join()
+        executor.join(pubsub.coro)
 
     p1 = pubsub.subscribe('a', message_callback, {})
     p2 = p1.then(publish_callback)
     p2.get()
 
 
-def test_pubsub_subscribe_and_unsubscribe(pubsub):
+def test_pubsub_subscribe_and_unsubscribe(pubsub, executor):
     def message_callback(message):
         sys.exit('Message callback should not have been called')
 
@@ -48,7 +52,7 @@ def test_pubsub_subscribe_and_unsubscribe(pubsub):
         pubsub.unsubscribe(sub_id)
         assert pubsub.publish('a', 'test')
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(pubsub.coro)
         except AttributeError:
             return
 
@@ -180,19 +184,19 @@ def test_subscribe_to_nameless_query_and_return_sub_id(sub_mgr):
     p2.get()
 
 
-def test_subscribe_with_valid_query_and_return_root_value(sub_mgr):
+def test_subscribe_with_valid_query_and_return_root_value(sub_mgr, executor):
     query = 'subscription X{ testSubscription }'
 
     def callback(e, payload):
         try:
             assert payload.data.get('testSubscription') == 'good'
-            sub_mgr.pubsub.greenlet.kill()
+            executor.kill(sub_mgr.pubsub.coro)
         except AssertionError as e:
             sys.exit(e)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
-        sub_mgr.pubsub.greenlet.join()
+        executor.join(sub_mgr.pubsub.coro)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'X', callback, {}, {}, None, None)
@@ -200,7 +204,7 @@ def test_subscribe_with_valid_query_and_return_root_value(sub_mgr):
     p2.get()
 
 
-def test_use_filter_functions_properly(sub_mgr):
+def test_use_filter_functions_properly(sub_mgr, executor):
     query = 'subscription Filter1($filterBoolean: Boolean) {\
     testFilter(filterBoolean: $filterBoolean)}'
 
@@ -213,14 +217,14 @@ def test_use_filter_functions_properly(sub_mgr):
                     assert True
                 else:
                     assert payload.data.get('testFilter') == 'good_filter'
-                    sub_mgr.pubsub.greenlet.kill()
+                    executor.kill(sub_mgr.pubsub.coro)
             except AssertionError as e:
                 sys.exit(e)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('filter_1', {'filterBoolean': False})
         sub_mgr.publish('filter_1', {'filterBoolean': True})
-        sub_mgr.pubsub.greenlet.join()
+        executor.join(sub_mgr.pubsub.coro)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'Filter1', callback, {'filterBoolean': True},
@@ -229,7 +233,7 @@ def test_use_filter_functions_properly(sub_mgr):
     p2.get()
 
 
-def test_use_filter_func_that_returns_a_promise(sub_mgr):
+def test_use_filter_func_that_returns_a_promise(sub_mgr, executor):
     query = 'subscription Filter2($filterBoolean: Boolean) {\
     testFilter(filterBoolean: $filterBoolean)}'
 
@@ -242,7 +246,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr):
                     assert True
                 else:
                     assert payload.data.get('testFilter') == 'good_filter'
-                    sub_mgr.pubsub.greenlet.kill()
+                    executor.kill(sub_mgr.pubsub.coro)
             except AssertionError as e:
                 sys.exit(e)
 
@@ -250,7 +254,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr):
         sub_mgr.publish('filter_2', {'filterBoolean': False})
         sub_mgr.publish('filter_2', {'filterBoolean': True})
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(sub_mgr.pubsub.coro)
         except:
             raise
         sub_mgr.unsubscribe(sub_id)
@@ -261,7 +265,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr):
     p2.get()
 
 
-def test_can_subscribe_to_more_than_one_trigger(sub_mgr):
+def test_can_subscribe_to_more_than_one_trigger(sub_mgr, executor):
     non_local = {'trigger_count': 0}
 
     query = 'subscription multiTrigger($filterBoolean: Boolean,\
@@ -281,13 +285,13 @@ def test_can_subscribe_to_more_than_one_trigger(sub_mgr):
             except AssertionError as e:
                 sys.exit(e)
         if non_local['trigger_count'] == 2:
-            sub_mgr.pubsub.greenlet.kill()
+            executor.kill(sub_mgr.pubsub.coro)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('not_a_trigger', {'filterBoolean': False})
         sub_mgr.publish('trigger_1', {'filterBoolean': True})
         sub_mgr.publish('trigger_2', {'filterBoolean': True})
-        sub_mgr.pubsub.greenlet.join()
+        executor.join(sub_mgr.pubsub.coro)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'multiTrigger', callback,
@@ -325,7 +329,7 @@ def test_subscribe_to_trigger_and_use_pubsub_channel_options(
     p2.get()
 
 
-def test_can_unsubscribe(sub_mgr):
+def test_can_unsubscribe(sub_mgr, executor):
     query = 'subscription X{ testSubscription }'
 
     def callback(err, payload):
@@ -338,7 +342,7 @@ def test_can_unsubscribe(sub_mgr):
         sub_mgr.unsubscribe(sub_id)
         sub_mgr.publish('testSubscription', 'good')
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(sub_mgr.pubsub.coro)
         except AttributeError:
             return
 
@@ -379,7 +383,8 @@ def test_throws_error_when_unsubscribes_a_second_time(sub_mgr):
     p2.get()
 
 
-def test_calls_the_error_callback_if_there_is_an_execution_error(sub_mgr):
+def test_calls_the_error_callback_if_there_is_an_execution_error(
+        sub_mgr, executor):
     query = 'subscription X($uga: Boolean!){\
         testSubscription  @skip(if: $uga)\
     }'
@@ -390,14 +395,14 @@ def test_calls_the_error_callback_if_there_is_an_execution_error(sub_mgr):
             assert err.message == 'Variable "$uga" of required type\
  "Boolean!" was not provided.'
 
-            sub_mgr.pubsub.greenlet.kill()
+            executor.kill(sub_mgr.pubsub.coro)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(sub_mgr.pubsub.coro)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)
@@ -414,21 +419,21 @@ def test_calls_the_error_callback_if_there_is_an_execution_error(sub_mgr):
     p2.get()
 
 
-def test_calls_context_if_it_is_a_function(sub_mgr):
+def test_calls_context_if_it_is_a_function(sub_mgr, executor):
     query = 'subscription TestContext { testContext }'
 
     def callback(err, payload):
         try:
             assert err is None
             assert payload.data.get('testContext') == 'trigger'
-            sub_mgr.pubsub.greenlet.kill()
+            executor.kill(sub_mgr.pubsub.coro)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('context_trigger', 'ignored')
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(sub_mgr.pubsub.coro)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)
@@ -445,21 +450,22 @@ def test_calls_context_if_it_is_a_function(sub_mgr):
     p2.get()
 
 
-def test_calls_the_error_callback_if_context_func_throws_error(sub_mgr):
+def test_calls_the_error_callback_if_context_func_throws_error(
+        sub_mgr, executor):
     query = 'subscription TestContext { testContext }'
 
     def callback(err, payload):
         try:
             assert payload is None
             assert str(err) == 'context error'
-            sub_mgr.pubsub.greenlet.kill()
+            executor.kill(sub_mgr.pubsub.coro)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('context_trigger', 'ignored')
         try:
-            sub_mgr.pubsub.greenlet.join()
+            executor.join(sub_mgr.pubsub.coro)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)
@@ -497,30 +503,30 @@ def validation_schema():
 
 def test_should_allow_a_valid_subscription(validation_schema):
     sub = 'subscription S1{ test1 }'
-    errors = validate(validation_schema, parse(sub),
-                      [SubscriptionHasSingleRootField])
+    errors = validate(validation_schema,
+                      parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 0
 
 
 def test_should_allow_another_valid_subscription(validation_schema):
     sub = 'subscription S1{ test1 } subscription S2{ test2 }'
-    errors = validate(validation_schema, parse(sub),
-                      [SubscriptionHasSingleRootField])
+    errors = validate(validation_schema,
+                      parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 0
 
 
 def test_should_not_allow_two_fields_in_the_subscription(validation_schema):
     sub = 'subscription S3{ test1 test2 }'
-    errors = validate(validation_schema, parse(sub),
-                      [SubscriptionHasSingleRootField])
+    errors = validate(validation_schema,
+                      parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
     assert errors[0].message == 'Subscription "S3" must have only one field.'
 
 
 def test_should_not_allow_inline_fragments(validation_schema):
     sub = 'subscription S4{ ...on Subscription { test1 } }'
-    errors = validate(validation_schema, parse(sub),
-                      [SubscriptionHasSingleRootField])
+    errors = validate(validation_schema,
+                      parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
     assert errors[0].message == 'Apollo subscriptions do not support\
  fragments on the root field'
@@ -529,8 +535,9 @@ def test_should_not_allow_inline_fragments(validation_schema):
 def test_should_not_allow_fragments(validation_schema):
     sub = 'subscription S5{ ...testFragment }\
  fragment testFragment on Subscription{ test2 }'
-    errors = validate(validation_schema, parse(sub),
-                      [SubscriptionHasSingleRootField])
+
+    errors = validate(validation_schema,
+                      parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
     assert errors[0].message == 'Apollo subscriptions do not support\
  fragments on the root field'

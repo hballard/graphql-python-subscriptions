@@ -4,17 +4,25 @@ from builtins import object
 import pickle
 
 from promise import Promise
-import gevent
 import redis
 
+from ..executors.gevent import GeventExecutor
+
+
 class RedisPubsub(object):
-    def __init__(self, host='localhost', port=6379, *args, **kwargs):
-        redis.connection.socket = gevent.socket
+    def __init__(self,
+                 host='localhost',
+                 port=6379,
+                 executor=GeventExecutor,
+                 *args,
+                 **kwargs):
+        redis.connection.socket = executor.socket
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
         self.pubsub = self.redis.pubsub()
         self.subscriptions = {}
         self.sub_id_counter = 0
-        self.greenlet = None
+        self.coro = None
+        self.executor = executor()
 
     def publish(self, trigger_name, message):
         self.redis.publish(trigger_name, pickle.dumps(message))
@@ -30,8 +38,8 @@ class RedisPubsub(object):
         self.subscriptions[self.sub_id_counter] = [
             trigger_name, on_message_handler
         ]
-        if not self.greenlet:
-            self.greenlet = gevent.spawn(self.wait_and_get_message)
+        if not self.coro:
+            self.coro = self.executor.execute(self.wait_and_get_message)
         return Promise.resolve(self.sub_id_counter)
 
     def unsubscribe(self, sub_id):
@@ -43,14 +51,14 @@ class RedisPubsub(object):
         except IndexError:
             self.pubsub.unsubscribe(trigger_name)
         if not self.subscriptions:
-            self.greenlet = self.greenlet.kill()
+            self.coro = self.executor.kill(self.coro)
 
     def wait_and_get_message(self):
         while True:
             message = self.pubsub.get_message(ignore_subscribe_messages=True)
             if message:
                 self.handle_message(message)
-            gevent.sleep(.001)
+            self.executor.sleep(.001)
 
     def handle_message(self, message):
         if isinstance(message['channel'], bytes):
@@ -58,5 +66,3 @@ class RedisPubsub(object):
         for sub_id, trigger_map in self.subscriptions.items():
             if trigger_map[0] == channel:
                 trigger_map[1](pickle.loads(message['data']))
-
-

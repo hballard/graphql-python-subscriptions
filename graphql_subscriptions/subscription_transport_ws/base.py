@@ -1,8 +1,8 @@
 from builtins import str
 from promise import Promise
-import gevent
 import json
 
+from ..executors.gevent import GeventExecutor
 from .protocols import (SUBSCRIPTION_FAIL, SUBSCRIPTION_END, SUBSCRIPTION_DATA,
                         SUBSCRIPTION_START, SUBSCRIPTION_SUCCESS, KEEPALIVE,
                         INIT, INIT_SUCCESS, INIT_FAIL, GRAPHQL_SUBSCRIPTIONS)
@@ -12,6 +12,7 @@ class BaseSubscriptionServer(object):
     def __init__(self,
                  subscription_manager,
                  websocket,
+                 executor=GeventExecutor,
                  keep_alive=None,
                  on_subscribe=None,
                  on_unsubscribe=None,
@@ -29,13 +30,14 @@ class BaseSubscriptionServer(object):
         self.keep_alive = keep_alive
         self.connection_subscriptions = {}
         self.connection_context = {}
+        self.executor = executor()
 
         super(BaseSubscriptionServer, self).__init__(websocket)
 
     def timer(self, callback, period):
         while True:
             callback()
-            gevent.sleep(period)
+            self.executor.sleep(period)
 
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
@@ -52,11 +54,12 @@ class BaseSubscriptionServer(object):
             if not self.ws.closed:
                 self.send_keep_alive()
             else:
-                gevent.kill(keep_alive_timer)
+                self.executor.kill(keep_alive_timer)
 
         if self.keep_alive:
-            keep_alive_timer = gevent.spawn(self.timer, keep_alive_callback,
-                                            self.keep_alive)
+            keep_alive_timer = self.executor.execute(self.timer,
+                                                   keep_alive_callback,
+                                                   self.keep_alive)
 
     def on_close(self, reason):
         for sub_id in list(self.connection_subscriptions.keys()):

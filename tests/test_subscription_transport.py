@@ -31,8 +31,8 @@ import requests
 from graphql_subscriptions import (RedisPubsub, SubscriptionManager,
                                    SubscriptionServer)
 
-from graphql_subscriptions.subscription_transport_ws.protocols import (SUBSCRIPTION_FAIL,
-                                                                       SUBSCRIPTION_DATA)
+from graphql_subscriptions.subscription_transport_ws.protocols import (
+     SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess

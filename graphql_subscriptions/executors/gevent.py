@@ -1,8 +1,5 @@
-import gevent
-from promise import Promise
 from geventwebsocket import WebSocketApplication
-
-from .utils import process
+import gevent
 
 
 class GeventMixin(WebSocketApplication):
@@ -10,17 +7,20 @@ class GeventMixin(WebSocketApplication):
 
 
 class GeventExecutor(object):
+    socket = gevent.socket
 
-    def __init__(self):
-        self.jobs = []
+    @staticmethod
+    def sleep(time):
+        return gevent.sleep(time)
 
-    def wait_until_finished(self):
-        [j.join() for j in self.jobs]
-        # gevent.joinall(self.jobs)
-        self.jobs = []
+    @staticmethod
+    def kill(coro):
+        return gevent.kill(coro)
 
-    def execute(self, fn, *args, **kwargs):
-        promise = Promise()
-        job = gevent.spawn(process, promise, fn, args, kwargs)
-        self.jobs.append(job)
-        return promise
+    @staticmethod
+    def join(coro):
+        return gevent.joinall([coro])
+
+    @staticmethod
+    def execute(fn, *args, **kwargs):
+        return gevent.spawn(fn, *args, **kwargs)
