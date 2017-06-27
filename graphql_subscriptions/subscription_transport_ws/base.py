@@ -12,7 +12,7 @@ class BaseSubscriptionServer(object):
     def __init__(self,
                  subscription_manager,
                  websocket,
-                 executor=GeventExecutor,
+                 executor=None,
                  keep_alive=None,
                  on_subscribe=None,
                  on_unsubscribe=None,
@@ -30,7 +30,11 @@ class BaseSubscriptionServer(object):
         self.keep_alive = keep_alive
         self.connection_subscriptions = {}
         self.connection_context = {}
-        self.executor = executor()
+
+        if executor:
+            self.executor = executor()
+        else:
+            self.executor = subscription_manager.pubsub.executor
 
         super(BaseSubscriptionServer, self).__init__(websocket)
 
@@ -57,9 +61,10 @@ class BaseSubscriptionServer(object):
                 self.executor.kill(keep_alive_timer)
 
         if self.keep_alive:
-            keep_alive_timer = self.executor.execute(self.timer,
-                                                   keep_alive_callback,
-                                                   self.keep_alive)
+            keep_alive_timer = self.executor.execute(
+                self.timer,
+                keep_alive_callback,
+                self.keep_alive)
 
     def on_close(self, reason):
         for sub_id in list(self.connection_subscriptions.keys()):

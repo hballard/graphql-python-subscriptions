@@ -33,7 +33,7 @@ from graphql_subscriptions.executors.gevent import GeventExecutor, GeventMixin
 from graphql_subscriptions.subscription_transport_ws import (
     BaseSubscriptionServer)
 from graphql_subscriptions.subscription_transport_ws.protocols import (
-     SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
+    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -43,7 +43,7 @@ else:
 TEST_PORT = 5000
 
 
-class PickableMock(object):
+class Picklable(object):
     def __init__(self, return_value=None, side_effect=None, name=None):
         self._return_value = return_value
         self._side_effect = side_effect
@@ -210,7 +210,7 @@ def on_sub_mock(mocker):
 
     on_sub_mock = {
         'on_subscribe':
-        PickableMock(side_effect=promisify(on_subscribe), name='on_subscribe')
+        Picklable(side_effect=promisify(on_subscribe), name='on_subscribe')
     }
 
     return on_sub_mock, q
@@ -239,16 +239,16 @@ def options_mocks(mocker):
 
     options_mocks = {
         'on_subscribe':
-        PickableMock(side_effect=promisify(on_subscribe), name='on_subscribe'),
+        Picklable(side_effect=promisify(on_subscribe), name='on_subscribe'),
         'on_unsubscribe':
-        PickableMock(side_effect=on_unsubscribe, name='on_unsubscribe'),
+        Picklable(side_effect=on_unsubscribe, name='on_unsubscribe'),
         'on_connect':
-        PickableMock(
+        Picklable(
             return_value={'test': 'test_context'},
             side_effect=on_connect,
             name='on_connect'),
         'on_disconnect':
-        PickableMock(side_effect=on_disconnect, name='on_disconnect')
+        Picklable(side_effect=on_disconnect, name='on_disconnect')
     }
 
     return options_mocks, q
@@ -359,7 +359,7 @@ def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
         os.path.join(os.path.dirname(__file__), 'node_modules'), TEST_PORT)
     try:
         subprocess.check_output(
-            ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.2)
+            ['node', '-e', node_script], stderr=subprocess.STDOUT, timeout=.3)
     except:
         mock = server_with_mocks.get_nowait()
         assert mock.name == 'on_connect'

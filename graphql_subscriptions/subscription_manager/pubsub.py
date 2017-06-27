@@ -16,13 +16,16 @@ class RedisPubsub(object):
                  executor=GeventExecutor,
                  *args,
                  **kwargs):
-        redis.connection.socket = executor.socket
+
+        if hasattr(executor, 'socket'):
+            redis.connection.socket = executor.socket
+        self.coro = None
+        self.executor = executor()
+
         self.redis = redis.StrictRedis(host, port, *args, **kwargs)
         self.pubsub = self.redis.pubsub()
         self.subscriptions = {}
         self.sub_id_counter = 0
-        self.coro = None
-        self.executor = executor()
 
     def publish(self, trigger_name, message):
         self.redis.publish(trigger_name, pickle.dumps(message))
