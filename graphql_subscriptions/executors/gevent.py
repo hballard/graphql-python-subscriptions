@@ -20,6 +20,12 @@ class GeventExecutor(object):
         gevent.sleep(time)
 
     @staticmethod
+    def timer(callback, period):
+        while True:
+            callback()
+            gevent.sleep(period)
+
+    @staticmethod
     def kill(greenlet):
         greenlet.kill()
 

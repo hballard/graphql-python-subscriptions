@@ -2,7 +2,6 @@ from builtins import str
 from promise import Promise
 import json
 
-from ..executors.gevent import GeventExecutor
 from .protocols import (SUBSCRIPTION_FAIL, SUBSCRIPTION_END, SUBSCRIPTION_DATA,
                         SUBSCRIPTION_START, SUBSCRIPTION_SUCCESS, KEEPALIVE,
                         INIT, INIT_SUCCESS, INIT_FAIL, GRAPHQL_SUBSCRIPTIONS)
@@ -38,11 +37,6 @@ class BaseSubscriptionServer(object):
 
         super(BaseSubscriptionServer, self).__init__(websocket)
 
-    def timer(self, callback, period):
-        while True:
-            callback()
-            self.executor.sleep(period)
-
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
 
@@ -62,7 +56,7 @@ class BaseSubscriptionServer(object):
 
         if self.keep_alive:
             keep_alive_timer = self.executor.execute(
-                self.timer,
+                self.executor.timer,
                 keep_alive_callback,
                 self.keep_alive)
 
@@ -252,21 +246,22 @@ OnSubscribe!  Return value must be an dict'
 
     def send_subscription_data(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_DATA, 'id': sub_id, 'payload': payload}
-        self.ws.send(json.dumps(message))
+        self.executor.execute(self.ws.send, json.dumps(message))
 
     def send_subscription_fail(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_FAIL, 'id': sub_id, 'payload': payload}
-        self.ws.send(json.dumps(message))
+        self.executor.execute(self.ws.send, json.dumps(message))
+        # self.ws.send(json.dumps(message))
 
     def send_subscription_success(self, sub_id):
         message = {'type': SUBSCRIPTION_SUCCESS, 'id': sub_id}
-        self.ws.send(json.dumps(message))
+        self.executor.execute(self.ws.send, json.dumps(message))
 
     def send_init_result(self, result):
-        self.ws.send(json.dumps(result))
+        self.executor.execute(self.ws.send, json.dumps(result))
         if result.get('type') == INIT_FAIL:
             self.ws.close(1011)
 
     def send_keep_alive(self):
         message = {'type': KEEPALIVE}
-        self.ws.send(json.dumps(message))
+        self.executor.execute(self.ws.send, json.dumps(message))

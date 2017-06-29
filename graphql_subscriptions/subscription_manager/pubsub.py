@@ -7,6 +7,7 @@ from promise import Promise
 import redis
 
 from ..executors.gevent import GeventExecutor
+from ..executors.asyncio import AsyncioExecutor
 
 
 class RedisPubsub(object):
@@ -17,32 +18,45 @@ class RedisPubsub(object):
                  *args,
                  **kwargs):
 
-        if hasattr(executor, 'socket'):
-            redis.connection.socket = executor.socket
-        self.coro = None
-        self.executor = executor()
+        if executor == AsyncioExecutor:
+            try:
+                import aredis
+            except ImportError:
+                print('You need the redis_client "aredis" for use w/ asyncio')
+            redis_client = aredis
+        else:
+            redis_client = redis
 
-        self.redis = redis.StrictRedis(host, port, *args, **kwargs)
-        self.pubsub = self.redis.pubsub()
+        if executor == GeventExecutor:
+            redis_client.connection.socket = executor.socket
+
+        self.executor = executor()
+        self.get_message_task = None
+
         self.subscriptions = {}
-        self.sub_id_counter = 0
+        self.sub_id_counter = 1
+
+        self.redis = redis_client.StrictRedis(host, port, *args, **kwargs)
+        self.pubsub = self.redis.pubsub()
 
     def publish(self, trigger_name, message):
-        self.redis.publish(trigger_name, pickle.dumps(message))
+        self.executor.execute(
+            self.redis.publish, trigger_name, pickle.dumps(message))
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
         self.sub_id_counter += 1
         try:
             if trigger_name not in list(self.subscriptions.values())[0]:
-                self.pubsub.subscribe(trigger_name)
+                self.executor.execute(self.pubsub.subscribe, trigger_name)
         except IndexError:
-            self.pubsub.subscribe(trigger_name)
+            self.executor.execute(self.pubsub.subscribe, trigger_name)
         self.subscriptions[self.sub_id_counter] = [
             trigger_name, on_message_handler
         ]
-        if not self.coro:
-            self.coro = self.executor.execute(self.wait_and_get_message)
+        if not self.get_message_task:
+            self.get_message_task = self.executor.execute(
+                self.wait_and_get_message)
         return Promise.resolve(self.sub_id_counter)
 
     def unsubscribe(self, sub_id):
@@ -50,11 +64,11 @@ class RedisPubsub(object):
         del self.subscriptions[sub_id]
         try:
             if trigger_name not in list(self.subscriptions.values())[0]:
-                self.pubsub.unsubscribe(trigger_name)
+                self.executor.execute(self.pubsub.unsubscribe, trigger_name)
         except IndexError:
-            self.pubsub.unsubscribe(trigger_name)
+            self.executor.execute(self.pubsub.unsubscribe, trigger_name)
         if not self.subscriptions:
-            self.coro = self.executor.kill(self.coro)
+            self.get_message_task = self.executor.kill(self.get_message_task)
 
     def wait_and_get_message(self):
         while True:

@@ -1,4 +1,3 @@
-# source: https://github.com/graphql-python/graphql-core/blob/master/graphql/execution/executors/asyncio.py
 from __future__ import absolute_import
 
 import asyncio
@@ -7,6 +6,7 @@ try:
     from asyncio import ensure_future
 except ImportError:
     # ensure_future is only implemented in Python 3.4.4+
+    # Reference: https://github.com/graphql-python/graphql-core/blob/master/graphql/execution/executors/asyncio.py
     def ensure_future(coro_or_future, loop=None):
         """Wrap a coroutine or an awaitable in a future.
         If the argument is a Future, it is returned directly.
@@ -23,8 +23,8 @@ except ImportError:
                 del task._source_traceback[-1]
             return task
         else:
-            raise TypeError('A Future, a coroutine or an awaitable is\
-                            required')
+            raise TypeError(
+                'A Future, a coroutine or an awaitable is required')
 
 
 class AsyncioMixin(object):
@@ -45,20 +45,30 @@ class AsyncioExecutor(object):
         yield from asyncio.sleep(time)
 
     @staticmethod
+    @asyncio.coroutine
+    def timer(callback, period):
+        while True:
+            callback()
+            yield from asyncio.sleep(period)
+
+    @staticmethod
     def kill(future):
         future.cancel()
 
-    @staticmethod
-    def join(future):
+    def join(self, future):
         self.loop.run_until_complete(asyncio.wait_for(future))
 
     def join_all(self):
-        futures = self.futures
-        self.futures = []
-        self.loop.run_until_complete(asyncio.wait(futures))
+        while self.futures:
+            futures = self.futures
+            self.futures = []
+            self.loop.run_until_complete(asyncio.wait(futures))
         return futures
 
     def execute(self, fn, *args, **kwargs):
-        future = ensure_future(result, loop=self.loop)
-        self.futures.append(future)
-        return future
+        result = fn(*args, **kwargs)
+        if isinstance(result, asyncio.Future) or asyncio.iscoroutine(result):
+            future = ensure_future(result, loop=self.loop)
+            self.futures.append(future)
+            return future
+        return result

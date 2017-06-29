@@ -23,7 +23,7 @@ class SubscriptionManager(object):
         self.pubsub = pubsub
         self.setup_funcs = setup_funcs
         self.subscriptions = {}
-        self.max_subscription_id = 0
+        self.max_subscription_id = 1
 
     def publish(self, trigger_name, payload):
         self.pubsub.publish(trigger_name, payload)
