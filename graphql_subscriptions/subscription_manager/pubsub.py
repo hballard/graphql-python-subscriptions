@@ -30,14 +30,14 @@ class RedisPubsub(object):
         if executor == GeventExecutor:
             redis_client.connection.socket = executor.socket
 
+        self.redis = redis_client.StrictRedis(host, port, *args, **kwargs)
+        self.pubsub = self.redis.pubsub()
+
         self.executor = executor()
         self.get_message_task = None
 
         self.subscriptions = {}
         self.sub_id_counter = 1
-
-        self.redis = redis_client.StrictRedis(host, port, *args, **kwargs)
-        self.pubsub = self.redis.pubsub()
 
     def publish(self, trigger_name, message):
         self.executor.execute(

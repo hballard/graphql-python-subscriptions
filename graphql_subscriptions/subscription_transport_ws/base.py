@@ -56,7 +56,7 @@ class BaseSubscriptionServer(object):
 
         if self.keep_alive:
             keep_alive_timer = self.executor.execute(
-                self.executor.timer,
+                self.executor.set_timeout,
                 keep_alive_callback,
                 self.keep_alive)
 

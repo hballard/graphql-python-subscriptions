@@ -46,7 +46,7 @@ class AsyncioExecutor(object):
 
     @staticmethod
     @asyncio.coroutine
-    def timer(callback, period):
+    def set_timeout(callback, period):
         while True:
             callback()
             yield from asyncio.sleep(period)

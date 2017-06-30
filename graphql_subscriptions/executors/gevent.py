@@ -20,7 +20,7 @@ class GeventExecutor(object):
         gevent.sleep(time)
 
     @staticmethod
-    def timer(callback, period):
+    def set_timeout(callback, period):
         while True:
             callback()
             gevent.sleep(period)
