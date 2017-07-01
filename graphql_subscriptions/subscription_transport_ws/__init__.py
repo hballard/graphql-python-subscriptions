@@ -1,5 +1,1 @@
-from .base import BaseSubscriptionServer
-
-
-class SubscriptionServer(BaseSubscriptionServer):
-    pass
+from .server import SubscriptionServer

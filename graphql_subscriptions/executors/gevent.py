@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 
-import gevent
 from geventwebsocket.exceptions import WebSocketError
+import gevent
 
 
 class GeventExecutor(object):
-    # used to patch socket library to it doesn't block
+    # used to patch socket library so it doesn't block
     socket = gevent.socket
     error = WebSocketError
 

@@ -2,12 +2,13 @@ from builtins import str
 from promise import Promise
 import json
 
-from .protocols import (SUBSCRIPTION_FAIL, SUBSCRIPTION_END, SUBSCRIPTION_DATA,
-                        SUBSCRIPTION_START, SUBSCRIPTION_SUCCESS, KEEPALIVE,
-                        INIT, INIT_SUCCESS, INIT_FAIL, GRAPHQL_SUBSCRIPTIONS)
+from .message_types import (SUBSCRIPTION_FAIL, SUBSCRIPTION_END,
+                            SUBSCRIPTION_DATA, SUBSCRIPTION_START,
+                            SUBSCRIPTION_SUCCESS, KEEPALIVE, INIT,
+                            INIT_SUCCESS, INIT_FAIL, GRAPHQL_SUBSCRIPTIONS)
 
 
-class BaseSubscriptionServer(object):
+class SubscriptionServer(object):
     def __init__(self,
                  subscription_manager,
                  websocket,

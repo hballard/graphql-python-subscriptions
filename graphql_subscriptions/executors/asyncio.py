@@ -27,10 +27,6 @@ except ImportError:
                 'A Future, a coroutine or an awaitable is required')
 
 
-class AsyncioMixin(object):
-    pass
-
-
 class AsyncioExecutor(object):
 
     def __init__(self, loop=None):
@@ -38,6 +34,33 @@ class AsyncioExecutor(object):
             loop = asyncio.get_event_loop()
         self.loop = loop
         self.futures = []
+
+    @staticmethod
+    @asyncio.coroutine
+    def ws_close(ws, code):
+        yield from ws.close(code)
+
+    @staticmethod
+    def ws_protocol(ws):
+        return ws.subprotocol
+
+    @staticmethod
+    def ws_open(ws):
+        if ws.open:
+            return True
+        else:
+            return False
+
+    @staticmethod
+    @asyncio.coroutine
+    def ws_send(ws, msg):
+        yield from ws.send(msg)
+
+    @staticmethod
+    @asyncio.coroutine
+    def ws_recv(ws):
+        msg = yield from ws.recv()
+        return msg
 
     @staticmethod
     @asyncio.coroutine

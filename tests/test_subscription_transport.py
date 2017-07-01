@@ -31,8 +31,8 @@ import requests
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.executors.gevent import GeventExecutor
 from graphql_subscriptions.subscription_transport_ws import (
-    BaseSubscriptionServer)
-from graphql_subscriptions.subscription_transport_ws.protocols import (
+    SubscriptionServer)
+from graphql_subscriptions.subscription_transport_ws.message_types import (
     SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
@@ -128,7 +128,7 @@ def pubsub(monkeypatch, executor):
 
 @pytest.fixture
 def sub_server(executor):
-        return BaseSubscriptionServer
+        return SubscriptionServer
 
 
 @pytest.fixture

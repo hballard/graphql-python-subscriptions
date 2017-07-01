@@ -28,6 +28,7 @@ class RedisPubsub(object):
         else:
             redis_client = redis
 
+        # patch socket library so it doesn't block if using gevent
         if executor == GeventExecutor:
             redis_client.connection.socket = executor.socket
 
