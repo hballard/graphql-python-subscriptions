@@ -21,6 +21,7 @@ class BaseSubscriptionServer(object):
         assert subscription_manager, "Must provide\
             'subscription_manager' to websocket app constructor"
 
+        self.ws = websocket
         self.subscription_manager = subscription_manager
         self.on_subscribe = on_subscribe
         self.on_unsubscribe = on_unsubscribe
@@ -35,7 +36,17 @@ class BaseSubscriptionServer(object):
         else:
             self.executor = subscription_manager.pubsub.executor
 
-        super(BaseSubscriptionServer, self).__init__(websocket)
+    def handle(self):
+        self.on_open()
+
+        while True:
+            try:
+                message = self.executor.ws_recv(self.ws)
+            except self.executor.error:
+                self.on_close()
+                break
+
+            self.on_message(message)
 
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
@@ -44,23 +55,23 @@ class BaseSubscriptionServer(object):
             self.on_unsubscribe(self.ws)
 
     def on_open(self):
-        if self.ws.protocol is None or (
-                GRAPHQL_SUBSCRIPTIONS not in self.ws.protocol):
-            self.ws.close(1002)
+        if self.executor.ws_protocol(self.ws) is None or (
+                GRAPHQL_SUBSCRIPTIONS not in self.executor.ws_protocol(
+                    self.ws)):
+            self.executor.ws_close(self.ws, 1002)
 
         def keep_alive_callback():
-            if not self.ws.closed:
+            if self.executor.ws_open(self.ws):
                 self.send_keep_alive()
             else:
                 self.executor.kill(keep_alive_timer)
 
         if self.keep_alive:
-            keep_alive_timer = self.executor.execute(
-                self.executor.set_timeout,
-                keep_alive_callback,
-                self.keep_alive)
+            keep_alive_timer = self.executor.execute(self.executor.set_timeout,
+                                                     keep_alive_callback,
+                                                     self.keep_alive)
 
-    def on_close(self, reason):
+    def on_close(self):
         for sub_id in list(self.connection_subscriptions.keys()):
             self.unsubscribe(self.connection_subscriptions[sub_id])
             del self.connection_subscriptions[sub_id]
@@ -246,22 +257,26 @@ OnSubscribe!  Return value must be an dict'
 
     def send_subscription_data(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_DATA, 'id': sub_id, 'payload': payload}
-        self.executor.execute(self.ws.send, json.dumps(message))
+        self.executor.execute(
+            self.executor.ws_send(self.ws, json.dumps(message)))
 
     def send_subscription_fail(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_FAIL, 'id': sub_id, 'payload': payload}
-        self.executor.execute(self.ws.send, json.dumps(message))
-        # self.ws.send(json.dumps(message))
+        self.executor.execute(
+            self.executor.ws_send(self.ws, json.dumps(message)))
 
     def send_subscription_success(self, sub_id):
         message = {'type': SUBSCRIPTION_SUCCESS, 'id': sub_id}
-        self.executor.execute(self.ws.send, json.dumps(message))
+        self.executor.execute(
+            self.executor.ws_send(self.ws, json.dumps(message)))
 
     def send_init_result(self, result):
-        self.executor.execute(self.ws.send, json.dumps(result))
+        self.executor.execute(
+            self.executor.ws_send(self.ws, json.dumps(result)))
         if result.get('type') == INIT_FAIL:
-            self.ws.close(1011)
+            self.executor.ws_close(self.ws, 1011)
 
     def send_keep_alive(self):
         message = {'type': KEEPALIVE}
-        self.executor.execute(self.ws.send, json.dumps(message))
+        self.executor.execute(
+            self.executor.ws_send(self.ws, json.dumps(message)))

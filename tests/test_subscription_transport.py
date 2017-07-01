@@ -29,7 +29,7 @@ import redis
 import requests
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
-from graphql_subscriptions.executors.gevent import GeventExecutor, GeventMixin
+from graphql_subscriptions.executors.gevent import GeventExecutor
 from graphql_subscriptions.subscription_transport_ws import (
     BaseSubscriptionServer)
 from graphql_subscriptions.subscription_transport_ws.protocols import (
@@ -128,10 +128,7 @@ def pubsub(monkeypatch, executor):
 
 @pytest.fixture
 def sub_server(executor):
-    class GeventSubscriptionServer(BaseSubscriptionServer, GeventMixin):
-        pass
-    if executor == GeventExecutor:
-        return GeventSubscriptionServer
+        return BaseSubscriptionServer
 
 
 @pytest.fixture

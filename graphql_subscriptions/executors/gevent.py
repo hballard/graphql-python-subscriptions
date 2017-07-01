@@ -1,19 +1,39 @@
 from __future__ import absolute_import
 
-from geventwebsocket import WebSocketApplication
 import gevent
-
-
-class GeventMixin(WebSocketApplication):
-    pass
+from geventwebsocket.exceptions import WebSocketError
 
 
 class GeventExecutor(object):
     # used to patch socket library to it doesn't block
     socket = gevent.socket
+    error = WebSocketError
 
     def __init__(self):
         self.greenlets = []
+
+    @staticmethod
+    def ws_close(ws, code):
+        ws.close(code)
+
+    @staticmethod
+    def ws_protocol(ws):
+        return ws.protocol
+
+    @staticmethod
+    def ws_open(ws):
+        if ws.closed:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def ws_send(ws, msg, **kwargs):
+        ws.send(msg, **kwargs)
+
+    @staticmethod
+    def ws_recv(ws):
+        return ws.receive()
 
     @staticmethod
     def sleep(time):

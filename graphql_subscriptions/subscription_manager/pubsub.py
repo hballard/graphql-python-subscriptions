@@ -23,6 +23,7 @@ class RedisPubsub(object):
                 import aredis
             except ImportError:
                 print('You need the redis_client "aredis" for use w/ asyncio')
+
             redis_client = aredis
         else:
             redis_client = redis
@@ -40,12 +41,13 @@ class RedisPubsub(object):
         self.sub_id_counter = 1
 
     def publish(self, trigger_name, message):
-        self.executor.execute(
-            self.redis.publish, trigger_name, pickle.dumps(message))
+        self.executor.execute(self.redis.publish, trigger_name,
+                              pickle.dumps(message))
         return True
 
     def subscribe(self, trigger_name, on_message_handler, options):
         self.sub_id_counter += 1
+
         try:
             if trigger_name not in list(self.subscriptions.values())[0]:
                 self.executor.execute(self.pubsub.subscribe, trigger_name)
@@ -62,11 +64,13 @@ class RedisPubsub(object):
     def unsubscribe(self, sub_id):
         trigger_name, on_message_handler = self.subscriptions[sub_id]
         del self.subscriptions[sub_id]
+
         try:
             if trigger_name not in list(self.subscriptions.values())[0]:
                 self.executor.execute(self.pubsub.unsubscribe, trigger_name)
         except IndexError:
             self.executor.execute(self.pubsub.unsubscribe, trigger_name)
+
         if not self.subscriptions:
             self.get_message_task = self.executor.kill(self.get_message_task)
 
@@ -80,6 +84,7 @@ class RedisPubsub(object):
     def handle_message(self, message):
         if isinstance(message['channel'], bytes):
             channel = message['channel'].decode()
+
         for sub_id, trigger_map in self.subscriptions.items():
             if trigger_map[0] == channel:
                 trigger_map[1](pickle.loads(message['data']))
