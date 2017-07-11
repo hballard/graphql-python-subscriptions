@@ -77,6 +77,7 @@ class RedisPubsub(object):
 
     def wait_and_get_message(self):
         while True:
+            # import pytest; pytest.set_trace()
             message = self.pubsub.get_message(ignore_subscribe_messages=True)
             if message:
                 self.handle_message(message)

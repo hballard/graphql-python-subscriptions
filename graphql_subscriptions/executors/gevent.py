@@ -21,7 +21,7 @@ class GeventExecutor(object):
         return ws.protocol
 
     @staticmethod
-    def ws_open(ws):
+    def ws_isopen(ws):
         if ws.closed:
             return False
         else:

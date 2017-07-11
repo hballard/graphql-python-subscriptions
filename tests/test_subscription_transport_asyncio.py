@@ -15,11 +15,9 @@ import sys
 import threading
 import time
 
-from flask import Flask, request, jsonify
-from flask_graphql import GraphQLView
-from flask_sockets import Sockets
-from geventwebsocket import WebSocketServer
 from promise import Promise
+from sanic import Sanic, response
+from sanic_graphql import GraphQLView
 import queue
 import fakeredis
 import graphene
@@ -29,7 +27,7 @@ import redis
 import requests
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
-from graphql_subscriptions.executors.gevent import GeventExecutor
+from graphql_subscriptions.executors.asyncio import AsyncioExecutor
 from graphql_subscriptions.subscription_transport_ws import (
     SubscriptionServer)
 from graphql_subscriptions.subscription_transport_ws.message_types import (
@@ -115,7 +113,7 @@ def data():
     }
 
 
-@pytest.fixture(params=[GeventExecutor])
+@pytest.fixture(params=[AsyncioExecutor])
 def executor(request):
     return request.param
 
@@ -252,33 +250,29 @@ def options_mocks(mocker):
 
 
 def create_app(sub_mgr, schema, options, executor, sub_server):
-    app = Flask(__name__)
-    sockets = Sockets(app)
+    app = Sanic(__name__)
 
-    app.app_protocol = lambda environ_path_info: 'graphql-subscriptions'
-
-    app.add_url_rule(
-        '/graphql',
-        view_func=GraphQLView.as_view('graphql', schema=schema, graphiql=True))
+    app.add_route(GraphQLView.as_view(schema=schema, graphiql=True),
+                  '/graphql')
 
     @app.route('/publish', methods=['POST'])
-    def sub_mgr_publish():
-        sub_mgr.publish(*request.get_json())
-        return jsonify(request.get_json())
+    async def sub_mgr_publish(request):
+        pytest.set_trace()
+        await sub_mgr.publish(*request.json)
+        return await response.json(request.json)
 
-    @sockets.route('/socket')
-    def socket_channel(websocket):
+    @app.websocket('/socket')
+    async def socket_channel(request, websocket):
         subscription_server = sub_server(sub_mgr, websocket,
                                          executor, **options)
-        subscription_server.handle()
+        await subscription_server.handle()
         return []
 
     return app
 
 
 def app_worker(app, port):
-    server = WebSocketServer(('', port), app)
-    server.serve_forever()
+    app.run(host="0.0.0.0", port=port)
 
 
 @pytest.fixture

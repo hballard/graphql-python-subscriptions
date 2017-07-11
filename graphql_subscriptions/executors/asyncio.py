@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import asyncio
+from websockets import ConnectionClosed
 
 try:
     from asyncio import ensure_future
@@ -28,6 +29,7 @@ except ImportError:
 
 
 class AsyncioExecutor(object):
+    error = ConnectionClosed
 
     def __init__(self, loop=None):
         if loop is None:
@@ -36,36 +38,31 @@ class AsyncioExecutor(object):
         self.futures = []
 
     @staticmethod
-    @asyncio.coroutine
     def ws_close(ws, code):
-        yield from ws.close(code)
+        return ws.close(code)
 
     @staticmethod
     def ws_protocol(ws):
         return ws.subprotocol
 
     @staticmethod
-    def ws_open(ws):
+    def ws_isopen(ws):
         if ws.open:
             return True
         else:
             return False
 
     @staticmethod
-    @asyncio.coroutine
     def ws_send(ws, msg):
-        yield from ws.send(msg)
+        return ws.send(msg)
 
     @staticmethod
-    @asyncio.coroutine
     def ws_recv(ws):
-        msg = yield from ws.recv()
-        return msg
+        return ws.recv()
 
     @staticmethod
-    @asyncio.coroutine
     def sleep(time):
-        yield from asyncio.sleep(time)
+        return asyncio.sleep(time)
 
     @staticmethod
     @asyncio.coroutine
@@ -78,20 +75,26 @@ class AsyncioExecutor(object):
     def kill(future):
         future.cancel()
 
-    def join(self, future):
-        self.loop.run_until_complete(asyncio.wait_for(future))
+    @staticmethod
+    def join(future, timeout):
+        return asyncio.wait_for(future, timeout=timeout)
 
     def join_all(self):
         while self.futures:
             futures = self.futures
             self.futures = []
-            self.loop.run_until_complete(asyncio.wait(futures))
+            asyncio.wait(futures)
         return futures
 
     def execute(self, fn, *args, **kwargs):
-        result = fn(*args, **kwargs)
-        if isinstance(result, asyncio.Future) or asyncio.iscoroutine(result):
-            future = ensure_future(result, loop=self.loop)
-            self.futures.append(future)
-            return future
-        return result
+        coro = fn(*args, **kwargs)
+        future = ensure_future(coro, loop=self.loop)
+        self.futures.append(future)
+        return future
+
+    def execute_and_call_callback(self, fn, callback, *args, **kwargs):
+        coro = fn(*args, **kwargs)
+        future = ensure_future(coro, loop=self.loop)
+        self.futures.append(future)
+        future.add_done_callback(callback)
+        return future

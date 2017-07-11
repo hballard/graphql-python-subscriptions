@@ -196,6 +196,7 @@ def test_subscribe_with_valid_query_and_return_root_value(sub_mgr, executor):
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
+        # pytest.set_trace()
         executor.join(sub_mgr.pubsub.get_message_task)
         sub_mgr.unsubscribe(sub_id)
 
