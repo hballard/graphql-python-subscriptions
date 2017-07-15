@@ -60,41 +60,33 @@ class AsyncioExecutor(object):
     def ws_recv(ws):
         return ws.recv()
 
-    @staticmethod
-    def sleep(time):
-        return asyncio.sleep(time)
-
-    @staticmethod
-    @asyncio.coroutine
-    def set_timeout(callback, period):
-        while True:
-            callback()
-            yield from asyncio.sleep(period)
+    def sleep(self, time):
+        return self.loop.run_until_complete(asyncio.sleep(time))
 
     @staticmethod
     def kill(future):
         future.cancel()
 
-    @staticmethod
-    def join(future, timeout):
-        return asyncio.wait_for(future, timeout=timeout)
+    def join(self, future, timeout=None):
+        return self.loop.run_until_complete(asyncio.wait_for(future,
+                                                             timeout=timeout))
 
-    def join_all(self):
-        while self.futures:
-            futures = self.futures
-            self.futures = []
-            asyncio.wait(futures)
-        return futures
+    @staticmethod
+    @asyncio.coroutine
+    def delayed_backgrd_task(func, callback=None, period=0, *arg, **kwargs):
+        while True:
+            if func:
+                result = func(*arg, **kwargs)
+                if asyncio.iscoroutine(result):
+                    msg = yield from result
+                    if callback:
+                        callback(msg)
+            if callback:
+                callback(result)
+            yield from asyncio.sleep(period)
 
     def execute(self, fn, *args, **kwargs):
         coro = fn(*args, **kwargs)
         future = ensure_future(coro, loop=self.loop)
         self.futures.append(future)
-        return future
-
-    def execute_and_call_callback(self, fn, callback, *args, **kwargs):
-        coro = fn(*args, **kwargs)
-        future = ensure_future(coro, loop=self.loop)
-        self.futures.append(future)
-        future.add_done_callback(callback)
         return future

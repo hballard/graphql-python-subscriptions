@@ -19,8 +19,8 @@ class SubscriptionServer(object):
                  on_connect=None,
                  on_disconnect=None):
 
-        assert subscription_manager, "Must provide\
-            'subscription_manager' to websocket app constructor"
+        assert subscription_manager, ("Must provide\
+            'subscription_manager' to websocket app constructor")
 
         self.ws = websocket
         self.subscription_manager = subscription_manager
@@ -54,9 +54,11 @@ class SubscriptionServer(object):
 
         while True:
             try:
-                self.executor.execute_and_call_callback(self.executor.ws_recv,
-                                                        self._on_message,
-                                                        self.ws)
+                self.executor.execute(self.executor.delayed_backgrd_task,
+                                      self.executor.ws_recv,
+                                      self.on_message,
+                                      0,
+                                      self.ws)
             except self.executor.error:
                 self.on_close()
                 break
@@ -86,9 +88,11 @@ class SubscriptionServer(object):
                 self.executor.kill(keep_alive_timer)
 
         if self.keep_alive:
-            keep_alive_timer = self.executor.execute(self.executor.set_timeout,
-                                                     keep_alive_callback,
-                                                     self.keep_alive)
+            keep_alive_timer = self.executor.execute(
+                self.executor.delayed_backgrd_task,
+                None,
+                keep_alive_callback,
+                self.keep_alive)
 
     def on_close(self):
         for sub_id in list(self.connection_subscriptions.keys()):
@@ -98,13 +102,12 @@ class SubscriptionServer(object):
         if self.on_disconnect:
             self.on_disconnect(self.ws)
 
-    def _on_message(self, future):
-        self.on_message(future.result())
-
     def on_message(self, msg):
 
         if msg is None:
             return
+        elif hasattr(msg, 'result'):  # check if future from asyncio
+            msg = msg.result()
 
         non_local = {'on_init_resolve': None, 'on_init_reject': None}
 
@@ -184,8 +187,9 @@ class SubscriptionServer(object):
 
                     def promised_params_handler(params):
                         if not isinstance(params, dict):
-                            error = 'Invalid params returned from\
-OnSubscribe!  Return value must be an dict'
+                            error = ('Invalid params returned from'
+                                     'OnSubscribe!  Return value must be an'
+                                     'dict')
 
                             self.send_subscription_fail(
                                 sub_id, {'errors': [{

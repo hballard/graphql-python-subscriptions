@@ -40,7 +40,7 @@ class GeventExecutor(object):
         gevent.sleep(time)
 
     @staticmethod
-    def set_timeout(callback, period):
+    def delayed_backgrd_task(callback, period):
         while True:
             callback()
             gevent.sleep(period)
@@ -52,11 +52,6 @@ class GeventExecutor(object):
     @staticmethod
     def join(greenlet):
         greenlet.join()
-
-    def join_all(self):
-        joined_greenlets = gevent.joinall(self.greenlets)
-        self.greenlets = []
-        return joined_greenlets
 
     def execute(self, fn, *args, **kwargs):
         greenlet = gevent.spawn(fn, *args, **kwargs)

@@ -36,7 +36,7 @@ class RedisPubsub(object):
         self.pubsub = self.redis.pubsub()
 
         self.executor = executor()
-        self.get_message_task = None
+        self.backgrd_task = None
 
         self.subscriptions = {}
         self.sub_id_counter = 1
@@ -57,8 +57,8 @@ class RedisPubsub(object):
         self.subscriptions[self.sub_id_counter] = [
             trigger_name, on_message_handler
         ]
-        if not self.get_message_task:
-            self.get_message_task = self.executor.execute(
+        if not self.backgrd_task:
+            self.backgrd_task = self.executor.execute(
                 self.wait_and_get_message)
         return Promise.resolve(self.sub_id_counter)
 
@@ -73,17 +73,30 @@ class RedisPubsub(object):
             self.executor.execute(self.pubsub.unsubscribe, trigger_name)
 
         if not self.subscriptions:
-            self.get_message_task = self.executor.kill(self.get_message_task)
+            self.backgrd_task = self.executor.kill(self.backgrd_task)
 
-    def wait_and_get_message(self):
+    def _wait_and_get_message_async(self):
+        self.executor.execute(self.executor.delayed_backgrd_task,
+                              self.pubsub.get_message,
+                              self.handle_message,
+                              .001,
+                              ignore_subscribe_messages=True)
+
+    def _wait_and_get_message_sync(self):
         while True:
-            # import pytest; pytest.set_trace()
             message = self.pubsub.get_message(ignore_subscribe_messages=True)
             if message:
                 self.handle_message(message)
             self.executor.sleep(.001)
 
+    def wait_and_get_message(self):
+        if hasattr(self.executor, 'loop'):
+            self._wait_and_get_message_async()
+        else:
+            self._wait_and_get_message_sync()
+
     def handle_message(self, message):
+
         if isinstance(message['channel'], bytes):
             channel = message['channel'].decode()
 
