@@ -37,28 +37,23 @@ class AsyncioExecutor(object):
         self.loop = loop
         self.futures = []
 
-    @staticmethod
-    def ws_close(ws, code):
-        return ws.close(code)
+    def ws_close(self, code):
+        return self.ws.close(code)
 
-    @staticmethod
-    def ws_protocol(ws):
-        return ws.subprotocol
+    def ws_protocol(self):
+        return self.ws.subprotocol
 
-    @staticmethod
-    def ws_isopen(ws):
-        if ws.open:
+    def ws_isopen(self):
+        if self.ws.open:
             return True
         else:
             return False
 
-    @staticmethod
-    def ws_send(ws, msg):
-        return ws.send(msg)
+    def ws_send(self, msg):
+        return self.ws.send(msg)
 
-    @staticmethod
-    def ws_recv(ws):
-        return ws.recv()
+    def ws_recv(self):
+        return self.ws.recv()
 
     @staticmethod
     def kill(future):
@@ -70,7 +65,8 @@ class AsyncioExecutor(object):
         return self.loop.run_until_complete(asyncio.sleep(time))
 
     def join(self, future=None, timeout=None):
-        if not isinstance(future, asyncio.Future) or not asyncio.iscoroutine(future):
+        if not isinstance(future,
+                          asyncio.Future) or not asyncio.iscoroutine(future):
             return
         if self.loop.is_running():
             return asyncio.wait_for(future, timeout=timeout)

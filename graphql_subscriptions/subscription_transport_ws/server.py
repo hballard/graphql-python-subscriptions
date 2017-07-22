@@ -22,7 +22,6 @@ class SubscriptionServer(object):
         assert subscription_manager, ("Must provide\
             'subscription_manager' to websocket app constructor")
 
-        self.ws = websocket
         self.subscription_manager = subscription_manager
         self.on_subscribe = on_subscribe
         self.on_unsubscribe = on_unsubscribe
@@ -37,12 +36,15 @@ class SubscriptionServer(object):
         else:
             self.executor = subscription_manager.pubsub.executor
 
+        self.ws = websocket
+        self.executor.ws = websocket
+
     def _handle_sync(self):
         self.on_open()
 
         while True:
             try:
-                message = self.executor.ws_recv(self.ws)
+                message = self.executor.ws_recv()
             except self.executor.error:
                 self.on_close()
                 break
@@ -54,7 +56,7 @@ class SubscriptionServer(object):
 
         while True:
             try:
-                message = await self.executor.ws_recv(self.ws)
+                message = await self.executor.ws_recv()
             except self.executor.error:
                 self.on_close()
                 break
@@ -89,13 +91,12 @@ class SubscriptionServer(object):
         return self._timer_sync(callback, period)
 
     def on_open(self):
-        if self.executor.ws_protocol(self.ws) is None or (
-                GRAPHQL_SUBSCRIPTIONS not in self.executor.ws_protocol(
-                    self.ws)):
-            self.executor.execute(self.executor.ws_close, self.ws, 1002)
+        if self.executor.ws_protocol() is None or (
+                GRAPHQL_SUBSCRIPTIONS not in self.executor.ws_protocol()):
+            self.executor.execute(self.executor.ws_close, 1002)
 
         def keep_alive_callback():
-            if self.executor.ws_isopen(self.ws):
+            if self.executor.ws_isopen():
                 self.send_keep_alive()
             else:
                 self.executor.kill(keep_alive_task)
@@ -297,26 +298,21 @@ class SubscriptionServer(object):
 
     def send_subscription_data(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_DATA, 'id': sub_id, 'payload': payload}
-        self.executor.execute(self.executor.ws_send, self.ws,
-                              json.dumps(message))
+        self.executor.execute(self.executor.ws_send, json.dumps(message))
 
     def send_subscription_fail(self, sub_id, payload):
         message = {'type': SUBSCRIPTION_FAIL, 'id': sub_id, 'payload': payload}
-        self.executor.execute(self.executor.ws_send, self.ws,
-                              json.dumps(message))
+        self.executor.execute(self.executor.ws_send, json.dumps(message))
 
     def send_subscription_success(self, sub_id):
         message = {'type': SUBSCRIPTION_SUCCESS, 'id': sub_id}
-        self.executor.execute(self.executor.ws_send, self.ws,
-                              json.dumps(message))
+        self.executor.execute(self.executor.ws_send, json.dumps(message))
 
     def send_init_result(self, result):
-        self.executor.execute(self.executor.ws_send, self.ws,
-                              json.dumps(result))
+        self.executor.execute(self.executor.ws_send, json.dumps(result))
         if result.get('type') == INIT_FAIL:
-            self.executor.execute(self.executor.ws_close, self.ws, 1011)
+            self.executor.execute(self.executor.ws_close, 1011)
 
     def send_keep_alive(self):
         message = {'type': KEEPALIVE}
-        self.executor.execute(self.executor.ws_send, self.ws,
-                              json.dumps(message))
+        self.executor.execute(self.executor.ws_send, json.dumps(message))

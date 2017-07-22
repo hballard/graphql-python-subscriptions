@@ -12,28 +12,23 @@ class GeventExecutor(object):
     def __init__(self):
         self.greenlets = []
 
-    @staticmethod
-    def ws_close(ws, code):
-        ws.close(code)
+    def ws_close(self, code):
+        self.ws.close(code)
 
-    @staticmethod
-    def ws_protocol(ws):
-        return ws.protocol
+    def ws_protocol(self):
+        return self.ws.protocol
 
-    @staticmethod
-    def ws_isopen(ws):
-        if ws.closed:
+    def ws_isopen(self):
+        if self.ws.closed:
             return False
         else:
             return True
 
-    @staticmethod
-    def ws_send(ws, msg, **kwargs):
-        ws.send(msg, **kwargs)
+    def ws_send(self, msg, **kwargs):
+        self.ws.send(msg, **kwargs)
 
-    @staticmethod
-    def ws_recv(ws):
-        return ws.receive()
+    def ws_recv(self):
+        return self.ws.receive()
 
     @staticmethod
     def sleep(time):
