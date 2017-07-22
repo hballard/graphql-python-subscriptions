@@ -40,14 +40,8 @@ class GeventExecutor(object):
         gevent.sleep(time)
 
     @staticmethod
-    def delayed_backgrd_task(callback, period):
-        while True:
-            callback()
-            gevent.sleep(period)
-
-    @staticmethod
     def kill(greenlet):
-        greenlet.kill()
+        gevent.kill(greenlet)
 
     @staticmethod
     def join(greenlet):

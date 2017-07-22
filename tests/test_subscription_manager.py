@@ -11,11 +11,12 @@ import redis
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.subscription_manager.validation import (
      SubscriptionHasSingleRootField)
-# from graphql_subscriptions.executors.gevent import GeventExecutor
-from graphql_subscriptions.executors.asyncio import AsyncioExecutor
+from graphql_subscriptions.executors.gevent import GeventExecutor
+# from graphql_subscriptions.executors.asyncio import AsyncioExecutor
 
 
-@pytest.fixture(params=[AsyncioExecutor])
+# @pytest.fixture(params=[AsyncioExecutor])
+@pytest.fixture(params=[GeventExecutor])
 def executor(request):
     return request.param
 
@@ -52,10 +53,6 @@ def test_pubsub_subscribe_and_unsubscribe(pubsub, executor):
     def unsubscribe_publish_callback(sub_id):
         pubsub.unsubscribe(sub_id)
         assert pubsub.publish('a', 'test')
-        try:
-            executor.join(pubsub.backgrd_task)
-        except AttributeError:
-            return
 
     p1 = pubsub.subscribe('a', message_callback, {})
     p2 = p1.then(unsubscribe_publish_callback)
@@ -197,7 +194,6 @@ def test_subscribe_with_valid_query_and_return_root_value(sub_mgr, executor):
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
-        # pytest.set_trace()
         executor.join(sub_mgr.pubsub.backgrd_task)
         sub_mgr.unsubscribe(sub_id)
 
@@ -394,7 +390,7 @@ def test_calls_the_error_callback_if_there_is_an_execution_error(
     def callback(err, payload):
         try:
             assert payload is None
-            assert err.message == ('Variable "$uga" of required type'
+            assert err.message == ('Variable "$uga" of required type '
                                    '"Boolean!" was not provided.')
 
             executor.kill(sub_mgr.pubsub.backgrd_task)
@@ -530,7 +526,7 @@ def test_should_not_allow_inline_fragments(validation_schema):
     errors = validate(validation_schema,
                       parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
-    assert errors[0].message == ('Apollo subscriptions do not support'
+    assert errors[0].message == ('Apollo subscriptions do not support '
                                  'fragments on the root field')
 
 
@@ -541,5 +537,5 @@ def test_should_not_allow_fragments(validation_schema):
     errors = validate(validation_schema,
                       parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
-    assert errors[0].message == ('Apollo subscriptions do not support'
+    assert errors[0].message == ('Apollo subscriptions do not support '
                                  'fragments on the root field')

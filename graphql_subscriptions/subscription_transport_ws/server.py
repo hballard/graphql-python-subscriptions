@@ -28,7 +28,7 @@ class SubscriptionServer(object):
         self.on_unsubscribe = on_unsubscribe
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
-        self.keep_alive = keep_alive
+        self.keep_alive_period = keep_alive
         self.connection_subscriptions = {}
         self.connection_context = {}
 
@@ -49,31 +49,44 @@ class SubscriptionServer(object):
 
             self.on_message(message)
 
-    def _handle_async(self):
+    async def _handle_async(self):
         self.on_open()
 
         while True:
             try:
-                self.executor.execute(self.executor.delayed_backgrd_task,
-                                      self.executor.ws_recv,
-                                      self.on_message,
-                                      0,
-                                      self.ws)
+                message = await self.executor.ws_recv(self.ws)
             except self.executor.error:
                 self.on_close()
                 break
 
+            self.on_message(message)
+
     def handle(self):
         if hasattr(self.executor, 'loop'):
-            self._handle_async()
+            return self._handle_async()
         else:
-            self._handle_sync()
+            return self._handle_sync()
 
     def unsubscribe(self, graphql_sub_id):
         self.subscription_manager.unsubscribe(graphql_sub_id)
 
         if self.on_unsubscribe:
             self.on_unsubscribe(self.ws)
+
+    async def _timer_async(self, callback, period):
+        while True:
+            callback()
+            await self.executor.sleep(period)
+
+    def _timer_sync(self, callback, period):
+        while True:
+            callback()
+            self.executor.sleep(period)
+
+    def timer(self, callback, period):
+        if hasattr(self.executor, 'loop'):
+            return self._timer_async(callback, period)
+        return self._timer_sync(callback, period)
 
     def on_open(self):
         if self.executor.ws_protocol(self.ws) is None or (
@@ -85,14 +98,13 @@ class SubscriptionServer(object):
             if self.executor.ws_isopen(self.ws):
                 self.send_keep_alive()
             else:
-                self.executor.kill(keep_alive_timer)
+                self.executor.kill(keep_alive_task)
 
-        if self.keep_alive:
-            keep_alive_timer = self.executor.execute(
-                self.executor.delayed_backgrd_task,
-                None,
+        if self.keep_alive_period:
+            keep_alive_task = self.executor.execute(
+                self.timer,
                 keep_alive_callback,
-                self.keep_alive)
+                self.keep_alive_period)
 
     def on_close(self):
         for sub_id in list(self.connection_subscriptions.keys()):
@@ -125,6 +137,7 @@ class SubscriptionServer(object):
                                             {'errors': [{
                                                 'message': str(e)
                                             }]})
+                return
 
             sub_id = parsed_message.get('id')
 

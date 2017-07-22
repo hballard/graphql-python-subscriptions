@@ -122,7 +122,7 @@ def executor(request):
 
 @pytest.fixture
 def pubsub(monkeypatch, executor):
-    # monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
+    monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
     return RedisPubsub(executor=executor)
 
 

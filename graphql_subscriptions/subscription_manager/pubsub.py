@@ -1,6 +1,7 @@
 from future import standard_library
 standard_library.install_aliases()
 from builtins import object
+import asyncio
 import pickle
 
 from promise import Promise
@@ -75,12 +76,12 @@ class RedisPubsub(object):
         if not self.subscriptions:
             self.backgrd_task = self.executor.kill(self.backgrd_task)
 
-    def _wait_and_get_message_async(self):
-        self.executor.execute(self.executor.delayed_backgrd_task,
-                              self.pubsub.get_message,
-                              self.handle_message,
-                              .001,
-                              ignore_subscribe_messages=True)
+    async def _wait_and_get_message_async(self):
+        while True:
+            message = await self.pubsub.get_message(ignore_subscribe_messages=True)
+            if message:
+                self.handle_message(message)
+            await self.executor.sleep(.001)
 
     def _wait_and_get_message_sync(self):
         while True:
@@ -91,9 +92,8 @@ class RedisPubsub(object):
 
     def wait_and_get_message(self):
         if hasattr(self.executor, 'loop'):
-            self._wait_and_get_message_async()
-        else:
-            self._wait_and_get_message_sync()
+            return self._wait_and_get_message_async()
+        return self._wait_and_get_message_sync()
 
     def handle_message(self, message):
 
