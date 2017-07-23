@@ -55,18 +55,17 @@ class AsyncioExecutor(object):
     def ws_recv(self):
         return self.ws.recv()
 
-    @staticmethod
-    def kill(future):
-        future.cancel()
-
     def sleep(self, time):
         if self.loop.is_running():
             return asyncio.sleep(time)
         return self.loop.run_until_complete(asyncio.sleep(time))
 
+    @staticmethod
+    def kill(future):
+        future.cancel()
+
     def join(self, future=None, timeout=None):
-        if not isinstance(future,
-                          asyncio.Future) or not asyncio.iscoroutine(future):
+        if not isinstance(future, asyncio.Future):
             return
         if self.loop.is_running():
             return asyncio.wait_for(future, timeout=timeout)

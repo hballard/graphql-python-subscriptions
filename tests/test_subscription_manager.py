@@ -15,48 +15,10 @@ from graphql_subscriptions.executors.gevent import GeventExecutor
 # from graphql_subscriptions.executors.asyncio import AsyncioExecutor
 
 
-# @pytest.fixture(params=[AsyncioExecutor])
 @pytest.fixture(params=[GeventExecutor])
-def executor(request):
-    return request.param
-
-
-@pytest.fixture
-def pubsub(monkeypatch, executor):
-    monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
-    return RedisPubsub(executor=executor)
-
-
-@pytest.mark.parametrize('test_input, expected', [('test', 'test'), ({
-    1: 'test'}, {1: 'test'}), (None, None)])
-def test_pubsub_subscribe_and_publish(pubsub, executor, test_input, expected):
-    def message_callback(message):
-        try:
-            assert message == expected
-            executor.kill(pubsub.backgrd_task)
-        except AssertionError as e:
-            sys.exit(e)
-
-    def publish_callback(sub_id):
-        assert pubsub.publish('a', test_input)
-        executor.join(pubsub.backgrd_task)
-
-    p1 = pubsub.subscribe('a', message_callback, {})
-    p2 = p1.then(publish_callback)
-    p2.get()
-
-
-def test_pubsub_subscribe_and_unsubscribe(pubsub, executor):
-    def message_callback(message):
-        sys.exit('Message callback should not have been called')
-
-    def unsubscribe_publish_callback(sub_id):
-        pubsub.unsubscribe(sub_id)
-        assert pubsub.publish('a', 'test')
-
-    p1 = pubsub.subscribe('a', message_callback, {})
-    p2 = p1.then(unsubscribe_publish_callback)
-    p2.get()
+def pubsub(monkeypatch, request):
+    # monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
+    return RedisPubsub(executor=request.param)
 
 
 @pytest.fixture
@@ -97,7 +59,7 @@ def schema():
 
 
 @pytest.fixture
-def sub_mgr(pubsub, schema):
+def setup_funcs():
     def filter_single(**kwargs):
         args = kwargs.get('args')
         return {
@@ -125,15 +87,49 @@ def sub_mgr(pubsub, schema):
     def filter_context(**kwargs):
         return {'context_trigger': lambda root, context: context == 'trigger'}
 
-    return SubscriptionManager(
-        schema,
-        pubsub,
-        setup_funcs={
-            'test_filter': filter_single,
-            'test_filter_multi': filter_multi,
-            'test_channel_options': filter_channel_options,
-            'test_context': filter_context
-        })
+    return {
+        'test_filter': filter_single,
+        'test_filter_multi': filter_multi,
+        'test_channel_options': filter_channel_options,
+        'test_context': filter_context
+    }
+
+
+@pytest.fixture
+def sub_mgr(pubsub, schema, setup_funcs):
+    return SubscriptionManager(schema, pubsub, setup_funcs)
+
+
+@pytest.mark.parametrize('test_input, expected', [('test', 'test'), ({
+    1: 'test'}, {1: 'test'}), (None, None)])
+def test_pubsub_subscribe_and_publish(pubsub, test_input, expected):
+    def message_callback(message):
+        try:
+            assert message == expected
+            pubsub.executor.kill(pubsub.backgrd_task)
+        except AssertionError as e:
+            sys.exit(e)
+
+    def publish_callback(sub_id):
+        assert pubsub.publish('a', test_input)
+        pubsub.executor.join(pubsub.backgrd_task)
+
+    p1 = pubsub.subscribe('a', message_callback, {})
+    p2 = p1.then(publish_callback)
+    p2.get()
+
+
+def test_pubsub_subscribe_and_unsubscribe(pubsub):
+    def message_callback(message):
+        sys.exit('Message callback should not have been called')
+
+    def unsubscribe_publish_callback(sub_id):
+        pubsub.unsubscribe(sub_id)
+        assert pubsub.publish('a', 'test')
+
+    p1 = pubsub.subscribe('a', message_callback, {})
+    p2 = p1.then(unsubscribe_publish_callback)
+    p2.get()
 
 
 def test_query_is_valid_and_throws_error(sub_mgr):
@@ -182,19 +178,19 @@ def test_subscribe_to_nameless_query_and_return_sub_id(sub_mgr):
     p2.get()
 
 
-def test_subscribe_with_valid_query_and_return_root_value(sub_mgr, executor):
+def test_subscribe_with_valid_query_and_return_root_value(sub_mgr):
     query = 'subscription X{ testSubscription }'
 
     def callback(e, payload):
         try:
             assert payload.data.get('testSubscription') == 'good'
-            executor.kill(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
         except AssertionError as e:
             sys.exit(e)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
-        executor.join(sub_mgr.pubsub.backgrd_task)
+        sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'X', callback, {}, {}, None, None)
@@ -202,7 +198,7 @@ def test_subscribe_with_valid_query_and_return_root_value(sub_mgr, executor):
     p2.get()
 
 
-def test_use_filter_functions_properly(sub_mgr, executor):
+def test_use_filter_functions_properly(sub_mgr):
     query = 'subscription Filter1($filterBoolean: Boolean) {\
     testFilter(filterBoolean: $filterBoolean)}'
 
@@ -215,14 +211,14 @@ def test_use_filter_functions_properly(sub_mgr, executor):
                     assert True
                 else:
                     assert payload.data.get('testFilter') == 'good_filter'
-                    executor.kill(sub_mgr.pubsub.backgrd_task)
+                    sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
             except AssertionError as e:
                 sys.exit(e)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('filter_1', {'filterBoolean': False})
         sub_mgr.publish('filter_1', {'filterBoolean': True})
-        executor.join(sub_mgr.pubsub.backgrd_task)
+        sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'Filter1', callback, {'filterBoolean': True},
@@ -231,7 +227,7 @@ def test_use_filter_functions_properly(sub_mgr, executor):
     p2.get()
 
 
-def test_use_filter_func_that_returns_a_promise(sub_mgr, executor):
+def test_use_filter_func_that_returns_a_promise(sub_mgr):
     query = 'subscription Filter2($filterBoolean: Boolean) {\
     testFilter(filterBoolean: $filterBoolean)}'
 
@@ -244,7 +240,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr, executor):
                     assert True
                 else:
                     assert payload.data.get('testFilter') == 'good_filter'
-                    executor.kill(sub_mgr.pubsub.backgrd_task)
+                    sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
             except AssertionError as e:
                 sys.exit(e)
 
@@ -252,7 +248,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr, executor):
         sub_mgr.publish('filter_2', {'filterBoolean': False})
         sub_mgr.publish('filter_2', {'filterBoolean': True})
         try:
-            executor.join(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         except:
             raise
         sub_mgr.unsubscribe(sub_id)
@@ -263,7 +259,7 @@ def test_use_filter_func_that_returns_a_promise(sub_mgr, executor):
     p2.get()
 
 
-def test_can_subscribe_to_more_than_one_trigger(sub_mgr, executor):
+def test_can_subscribe_to_more_than_one_trigger(sub_mgr):
     non_local = {'trigger_count': 0}
 
     query = 'subscription multiTrigger($filterBoolean: Boolean,\
@@ -283,13 +279,13 @@ def test_can_subscribe_to_more_than_one_trigger(sub_mgr, executor):
             except AssertionError as e:
                 sys.exit(e)
         if non_local['trigger_count'] == 2:
-            executor.kill(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
 
     def publish_and_unsubscribe_handler(sub_id):
         sub_mgr.publish('not_a_trigger', {'filterBoolean': False})
         sub_mgr.publish('trigger_1', {'filterBoolean': True})
         sub_mgr.publish('trigger_2', {'filterBoolean': True})
-        executor.join(sub_mgr.pubsub.backgrd_task)
+        sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         sub_mgr.unsubscribe(sub_id)
 
     p1 = sub_mgr.subscribe(query, 'multiTrigger', callback,
@@ -327,7 +323,7 @@ def test_subscribe_to_trigger_and_use_pubsub_channel_options(
     p2.get()
 
 
-def test_can_unsubscribe(sub_mgr, executor):
+def test_can_unsubscribe(sub_mgr):
     query = 'subscription X{ testSubscription }'
 
     def callback(err, payload):
@@ -340,7 +336,7 @@ def test_can_unsubscribe(sub_mgr, executor):
         sub_mgr.unsubscribe(sub_id)
         sub_mgr.publish('testSubscription', 'good')
         try:
-            executor.join(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         except AttributeError:
             return
 
@@ -382,7 +378,7 @@ def test_throws_error_when_unsubscribes_a_second_time(sub_mgr):
 
 
 def test_calls_the_error_callback_if_there_is_an_execution_error(
-        sub_mgr, executor):
+        sub_mgr):
     query = 'subscription X($uga: Boolean!){\
         testSubscription  @skip(if: $uga)\
     }'
@@ -393,14 +389,14 @@ def test_calls_the_error_callback_if_there_is_an_execution_error(
             assert err.message == ('Variable "$uga" of required type '
                                    '"Boolean!" was not provided.')
 
-            executor.kill(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('testSubscription', 'good')
         try:
-            executor.join(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)
@@ -417,21 +413,21 @@ def test_calls_the_error_callback_if_there_is_an_execution_error(
     p2.get()
 
 
-def test_calls_context_if_it_is_a_function(sub_mgr, executor):
+def test_calls_context_if_it_is_a_function(sub_mgr):
     query = 'subscription TestContext { testContext }'
 
     def callback(err, payload):
         try:
             assert err is None
             assert payload.data.get('testContext') == 'trigger'
-            executor.kill(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('context_trigger', 'ignored')
         try:
-            executor.join(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)
@@ -449,21 +445,21 @@ def test_calls_context_if_it_is_a_function(sub_mgr, executor):
 
 
 def test_calls_the_error_callback_if_context_func_throws_error(
-        sub_mgr, executor):
+        sub_mgr):
     query = 'subscription TestContext { testContext }'
 
     def callback(err, payload):
         try:
             assert payload is None
             assert str(err) == 'context error'
-            executor.kill(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.kill(sub_mgr.pubsub.backgrd_task)
         except AssertionError as e:
             sys.exit(e)
 
     def unsubscribe_and_publish_handler(sub_id):
         sub_mgr.publish('context_trigger', 'ignored')
         try:
-            executor.join(sub_mgr.pubsub.backgrd_task)
+            sub_mgr.pubsub.executor.join(sub_mgr.pubsub.backgrd_task)
         except AttributeError:
             return
         sub_mgr.unsubscribe(sub_id)

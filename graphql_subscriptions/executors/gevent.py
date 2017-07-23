@@ -39,8 +39,12 @@ class GeventExecutor(object):
         gevent.kill(greenlet)
 
     @staticmethod
-    def join(greenlet):
-        greenlet.join()
+    def join(greenlet, timeout=None):
+        greenlet.join(timeout)
+
+    def join_all(self):
+        gevent.joinall(self.greenlets)
+        self.greenlets = []
 
     def execute(self, fn, *args, **kwargs):
         greenlet = gevent.spawn(fn, *args, **kwargs)

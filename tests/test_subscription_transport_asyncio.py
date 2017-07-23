@@ -338,8 +338,7 @@ def test_raise_exception_when_create_server_and_no_sub_mgr(sub_server):
         sub_server(None, None)
 
 
-def test_should_trigger_on_connect_if_client_connect_valid():
-# def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
+def test_should_trigger_on_connect_if_client_connect_valid(server_with_mocks):
     node_script = '''
         module.paths.push('{0}')
         WebSocket = require('ws')

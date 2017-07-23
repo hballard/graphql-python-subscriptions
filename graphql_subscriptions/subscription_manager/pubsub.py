@@ -29,18 +29,18 @@ class RedisPubsub(object):
         else:
             redis_client = redis
 
-        # patch socket library so it doesn't block if using gevent
+        # patch redis socket library so it doesn't block if using gevent
         if executor == GeventExecutor:
             redis_client.connection.socket = executor.socket
 
         self.redis = redis_client.StrictRedis(host, port, *args, **kwargs)
-        self.pubsub = self.redis.pubsub()
+        self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
 
         self.executor = executor()
         self.backgrd_task = None
 
         self.subscriptions = {}
-        self.sub_id_counter = 1
+        self.sub_id_counter = 0
 
     def publish(self, trigger_name, message):
         self.executor.execute(self.redis.publish, trigger_name,
@@ -52,9 +52,11 @@ class RedisPubsub(object):
 
         try:
             if trigger_name not in list(self.subscriptions.values())[0]:
-                self.executor.execute(self.pubsub.subscribe, trigger_name)
+                self.executor.join(self.executor.execute(self.pubsub.subscribe,
+                                                         trigger_name))
         except IndexError:
-            self.executor.execute(self.pubsub.subscribe, trigger_name)
+            self.executor.join(self.executor.execute(self.pubsub.subscribe,
+                                                     trigger_name))
         self.subscriptions[self.sub_id_counter] = [
             trigger_name, on_message_handler
         ]
@@ -78,14 +80,14 @@ class RedisPubsub(object):
 
     async def _wait_and_get_message_async(self):
         while True:
-            message = await self.pubsub.get_message(ignore_subscribe_messages=True)
+            message = await self.pubsub.get_message()
             if message:
                 self.handle_message(message)
             await self.executor.sleep(.001)
 
     def _wait_and_get_message_sync(self):
         while True:
-            message = self.pubsub.get_message(ignore_subscribe_messages=True)
+            message = self.pubsub.get_message()
             if message:
                 self.handle_message(message)
             self.executor.sleep(.001)

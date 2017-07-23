@@ -36,8 +36,7 @@ class SubscriptionServer(object):
         else:
             self.executor = subscription_manager.pubsub.executor
 
-        self.ws = websocket
-        self.executor.ws = websocket
+        self.ws = self.executor.ws = websocket
 
     def _handle_sync(self):
         self.on_open()
