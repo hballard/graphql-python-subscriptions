@@ -1,23 +1,40 @@
-from types import FunctionType
 import sys
+from types import FunctionType
 
+import graphene
+import os
+import pytest
 from graphql import validate, parse
 from promise import Promise
-import fakeredis
-import graphene
-import pytest
-import redis
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.subscription_manager.validation import (
      SubscriptionHasSingleRootField)
 from graphql_subscriptions.executors.gevent import GeventExecutor
-# from graphql_subscriptions.executors.asyncio import AsyncioExecutor
+from graphql_subscriptions.executors.asyncio import AsyncioExecutor
+
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 
-@pytest.fixture(params=[GeventExecutor])
-def pubsub(monkeypatch, request):
-    # monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
+@pytest.fixture(scope="module")
+def start_redis_server():
+    try:
+        proc = subprocess.Popen(['redis-server'])
+    except FileNotFoundError:
+        raise RuntimeError(
+            "You must have redis installed in order to run these tests")
+    yield
+    proc.terminate()
+
+
+pytestmark = pytest.mark.usefixtures('start_redis_server')
+
+
+@pytest.fixture(params=[GeventExecutor, AsyncioExecutor])
+def pubsub(request):
     return RedisPubsub(executor=request.param)
 
 
@@ -64,10 +81,12 @@ def setup_funcs():
         args = kwargs.get('args')
         return {
             'filter_1': {
-                'filter': lambda root, context: root.get('filterBoolean') == args.get('filterBoolean')
+                'filter': lambda root, context: root.get(
+                    'filterBoolean') == args.get('filterBoolean')
             },
             'filter_2': {
-                'filter': lambda root, context: Promise.resolve(root.get('filterBoolean') == args.get('filterBoolean'))
+                'filter': lambda root, context: Promise.resolve(root.get(
+                    'filterBoolean') == args.get('filterBoolean'))
             },
         }
 

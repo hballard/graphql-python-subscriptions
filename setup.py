@@ -8,8 +8,8 @@ except (IOError, ImportError):
     long_description = open('README.md').read()
 
 tests_dep = [
-    'pytest', 'pytest-mock', 'fakeredis', 'graphene',
-    'flask', 'flask-graphql', 'flask-sockets', 'multiprocess', 'requests'
+    'pytest', 'pytest-mock', 'graphene', 'flask', 'flask-graphql',
+    'flask-sockets', 'multiprocess', 'requests'
 ]
 
 if sys.version_info[0] < 3:

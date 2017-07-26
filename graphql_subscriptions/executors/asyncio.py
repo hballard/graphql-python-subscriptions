@@ -30,6 +30,7 @@ except ImportError:
 
 class AsyncioExecutor(object):
     error = ConnectionClosed
+    task_cancel_error = asyncio.CancelledError
 
     def __init__(self, loop=None):
         if loop is None:
@@ -69,8 +70,8 @@ class AsyncioExecutor(object):
             return
         if self.loop.is_running():
             return asyncio.wait_for(future, timeout=timeout)
-        return self.loop.run_until_complete(asyncio.wait_for(future,
-                                                             timeout=timeout))
+        return self.loop.run_until_complete(
+            asyncio.wait_for(future, timeout=timeout))
 
     def execute(self, fn, *args, **kwargs):
         result = fn(*args, **kwargs)

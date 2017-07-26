@@ -75,9 +75,12 @@ class SubscriptionServer(object):
             self.on_unsubscribe(self.ws)
 
     async def _timer_async(self, callback, period):
-        while True:
-            callback()
-            await self.executor.sleep(period)
+        try:
+            while True:
+                callback()
+                await self.executor.sleep(period)
+        except self.executor.task_cancel_error:
+            return
 
     def _timer_sync(self, callback, period):
         while True:
@@ -102,9 +105,7 @@ class SubscriptionServer(object):
 
         if self.keep_alive_period:
             keep_alive_task = self.executor.execute(
-                self.timer,
-                keep_alive_callback,
-                self.keep_alive_period)
+                self.timer, keep_alive_callback, self.keep_alive_period)
 
     def on_close(self):
         for sub_id in list(self.connection_subscriptions.keys()):

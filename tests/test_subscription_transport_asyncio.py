@@ -6,18 +6,15 @@
 
 from future import standard_library
 standard_library.install_aliases()
-from builtins import object
-from functools import wraps
 import copy
 import json
 import os
 import sys
 import threading
 import time
+from builtins import object
+from functools import wraps
 
-from promise import Promise
-from sanic import Sanic, response
-from sanic_graphql import GraphQLView
 import queue
 import fakeredis
 import graphene
@@ -25,6 +22,9 @@ import multiprocess
 import pytest
 import redis
 import requests
+from promise import Promise
+from sanic import Sanic, response
+from sanic_graphql import GraphQLView
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.executors.asyncio import AsyncioExecutor
@@ -113,6 +113,20 @@ def data():
     }
 
 
+@pytest.fixture(scope="module")
+def start_redis_server():
+    try:
+        proc = subprocess.Popen(['redis-server'])
+    except FileNotFoundError:
+        raise RuntimeError(
+            "You must have redis installed in order to run these tests")
+    yield
+    proc.terminate()
+
+
+pytestmark = pytest.mark.usefixtures('start_redis_server')
+
+
 @pytest.fixture(params=[AsyncioExecutor])
 def executor(request):
     return request.param
@@ -120,7 +134,6 @@ def executor(request):
 
 @pytest.fixture
 def pubsub(monkeypatch, executor):
-    # monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
     return RedisPubsub(executor=executor)
 
 

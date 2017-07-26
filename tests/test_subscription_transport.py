@@ -6,20 +6,15 @@
 
 from future import standard_library
 standard_library.install_aliases()
-from builtins import object
-from functools import wraps
 import copy
 import json
 import os
 import sys
 import threading
 import time
+from builtins import object
+from functools import wraps
 
-from flask import Flask, request, jsonify
-from flask_graphql import GraphQLView
-from flask_sockets import Sockets
-from geventwebsocket import WebSocketServer
-from promise import Promise
 import queue
 import fakeredis
 import graphene
@@ -27,6 +22,11 @@ import multiprocess
 import pytest
 import redis
 import requests
+from flask import Flask, request, jsonify
+from flask_graphql import GraphQLView
+from flask_sockets import Sockets
+from geventwebsocket import WebSocketServer
+from promise import Promise
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.executors.gevent import GeventExecutor
@@ -115,14 +115,27 @@ def data():
     }
 
 
+@pytest.fixture(scope="module")
+def start_redis_server():
+    try:
+        proc = subprocess.Popen(['redis-server'])
+    except FileNotFoundError:
+        raise RuntimeError(
+            "You must have redis installed in order to run these tests")
+    yield
+    proc.terminate()
+
+
+pytestmark = pytest.mark.usefixtures('start_redis_server')
+
+
 @pytest.fixture(params=[GeventExecutor])
 def executor(request):
     return request.param
 
 
 @pytest.fixture
-def pubsub(monkeypatch, executor):
-    monkeypatch.setattr(redis, 'StrictRedis', fakeredis.FakeStrictRedis)
+def pubsub(executor):
     return RedisPubsub(executor=executor)
 
 
