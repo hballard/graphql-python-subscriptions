@@ -89,11 +89,6 @@ class SubscriptionManager(object):
             except AttributeError:
                 channel_options = {}
 
-                # TODO: Think about this some more...the Apollo library
-                # let's all messages through by default, even if
-                # the users incorrectly uses the setup_funcs (does not
-                # use 'filter' or 'channel_options' keys); I think it
-                # would be better to raise an exception here
                 def filter(arg1, arg2):
                     return True
 

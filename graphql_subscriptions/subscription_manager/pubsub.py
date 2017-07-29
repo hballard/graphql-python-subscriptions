@@ -3,12 +3,15 @@ standard_library.install_aliases()
 from builtins import object
 import asyncio
 import pickle
+import sys
 
 from promise import Promise
 import redis
 
 from ..executors.gevent import GeventExecutor
 from ..executors.asyncio import AsyncioExecutor
+
+PY3 = sys.version_info[0] == 3
 
 
 class RedisPubsub(object):
@@ -24,8 +27,8 @@ class RedisPubsub(object):
                 import aredis
             except:
                 raise ImportError(
-                    'You need the redis client "aredis" installed for use w/'
-                    ' asyncio')
+                    'You need the redis client "aredis" installed for use w/ '
+                    'asyncio')
 
             redis_client = aredis
         else:
@@ -35,11 +38,11 @@ class RedisPubsub(object):
         if executor == GeventExecutor:
             redis_client.connection.socket = executor.socket
 
-        self.executor = executor()
-        self.backgrd_task = None
-
         self.redis = redis_client.StrictRedis(host, port, *args, **kwargs)
         self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
+
+        self.executor = executor()
+        self.backgrd_task = None
 
         self.subscriptions = {}
         self.sub_id_counter = 0
@@ -52,18 +55,15 @@ class RedisPubsub(object):
     def subscribe(self, trigger_name, on_message_handler, options):
         self.sub_id_counter += 1
 
-        try:
-            if trigger_name not in list(self.subscriptions.values())[0]:
-                self.executor.join(
-                    self.executor.execute(self.pubsub.subscribe, trigger_name))
-        except IndexError:
-            self.executor.join(
-                self.executor.execute(self.pubsub.subscribe, trigger_name))
-
         self.subscriptions[self.sub_id_counter] = [
-            trigger_name, on_message_handler
-        ]
+            trigger_name, on_message_handler]
 
+        if PY3:
+            trigger_name = trigger_name.encode()
+
+        if trigger_name not in list(self.pubsub.channels.keys()):
+            self.executor.join(self.executor.execute(self.pubsub.subscribe,
+                                                     trigger_name))
         if not self.backgrd_task:
             self.backgrd_task = self.executor.execute(
                 self.wait_and_get_message)
@@ -75,10 +75,10 @@ class RedisPubsub(object):
 
         del self.subscriptions[sub_id]
 
-        try:
-            if trigger_name not in list(self.subscriptions.values())[0]:
-                self.executor.execute(self.pubsub.unsubscribe, trigger_name)
-        except IndexError:
+        if PY3:
+            trigger_name = trigger_name.encode()
+
+        if trigger_name not in list(self.pubsub.channels.keys()):
             self.executor.execute(self.pubsub.unsubscribe, trigger_name)
 
         if not self.subscriptions:
@@ -108,8 +108,7 @@ class RedisPubsub(object):
 
     def handle_message(self, message):
 
-        channel = message['channel'].decode() if isinstance(
-            message['channel'], bytes) else message['channel']
+        channel = message['channel'].decode() if PY3 else message['channel']
 
         for sub_id, trigger_map in self.subscriptions.items():
             if trigger_map[0] == channel:

@@ -541,7 +541,7 @@ def test_should_not_allow_inline_fragments(validation_schema):
     errors = validate(validation_schema,
                       parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
-    assert errors[0].message == ('Apollo subscriptions do not support '
+    assert errors[0].message == ('Subscriptions do not support '
                                  'fragments on the root field')
 
 
@@ -552,5 +552,5 @@ def test_should_not_allow_fragments(validation_schema):
     errors = validate(validation_schema,
                       parse(sub), [SubscriptionHasSingleRootField])
     assert len(errors) == 1
-    assert errors[0].message == ('Apollo subscriptions do not support '
+    assert errors[0].message == ('Subscriptions do not support '
                                  'fragments on the root field')

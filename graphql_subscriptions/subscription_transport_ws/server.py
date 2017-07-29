@@ -172,21 +172,15 @@ class SubscriptionServer(object):
 
                 def subscription_start_promise_handler(init_result):
                     base_params = {
-                        'query':
-                        parsed_message.get('query'),
-                        'operation_name':
-                        parsed_message.get('operation_name'),
-                        'callback':
-                        None,
-                        'variables':
-                        parsed_message.get('variables'),
+                        'query': parsed_message.get('query'),
+                        'operation_name': parsed_message.get('operation_name'),
+                        'callback': None,
+                        'variables': parsed_message.get('variables'),
                         'context':
                         init_result if isinstance(init_result, dict) else
                         parsed_message.get('context', {}),
-                        'format_error':
-                        None,
-                        'format_response':
-                        None
+                        'format_error': None,
+                        'format_response': None
                     }
                     promised_params = Promise.resolve(base_params)
 

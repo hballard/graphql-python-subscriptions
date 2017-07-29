@@ -3,8 +3,7 @@ from graphql.validation.rules.base import ValidationRule
 
 FIELD = 'Field'
 
-# XXX from Apollo pacakge: Temporarily use this validation
-# rule to make our life a bit easier.
+# Temporarily use this validation rule to make our life a bit easier.
 
 
 class SubscriptionHasSingleRootField(ValidationRule):
@@ -27,8 +26,8 @@ class SubscriptionHasSingleRootField(ValidationRule):
             else:
                 self.context.report_error(
                     GraphQLError(
-                        'Apollo subscriptions do not support fragments on\
- the root field', [node]))
+                        'Subscriptions do not support fragments on '
+                        'the root field', [node]))
         if num_fields > 1:
             self.context.report_error(
                 GraphQLError(
@@ -38,5 +37,5 @@ class SubscriptionHasSingleRootField(ValidationRule):
 
     @staticmethod
     def too_many_subscription_fields_error(subscription_name):
-        return 'Subscription "{0}" must have only one\
- field.'.format(subscription_name)
+        return ('Subscription "{0}" must have only one '
+                'field.'.format(subscription_name))
