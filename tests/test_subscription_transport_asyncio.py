@@ -22,6 +22,7 @@ import multiprocess
 import pytest
 import redis
 import requests
+import websockets
 from promise import Promise
 from sanic import Sanic, response
 from sanic_graphql import GraphQLView
@@ -31,7 +32,7 @@ from graphql_subscriptions.executors.asyncio import AsyncioExecutor
 from graphql_subscriptions.subscription_transport_ws import (
     SubscriptionServer)
 from graphql_subscriptions.subscription_transport_ws.message_types import (
-    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA)
+    SUBSCRIPTION_FAIL, SUBSCRIPTION_DATA, GRAPHQL_SUBSCRIPTIONS)
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
@@ -261,7 +262,6 @@ def options_mocks(mocker):
 
     return options_mocks, q
 
-
 def create_app(sub_mgr, schema, options, executor, sub_server):
     app = Sanic(__name__)
 
@@ -273,12 +273,16 @@ def create_app(sub_mgr, schema, options, executor, sub_server):
         await sub_mgr.publish(*request.json)
         return await response.json(request.json)
 
-    @app.websocket('/socket')
-    async def socket_channel(request, websocket):
-        subscription_server = sub_server(sub_mgr, websocket,
-                                         executor, **options)
-        await subscription_server.handle()
-        return []
+    async def websocket(websocket, path):
+        if path == '/socket':
+            subscription_server = sub_server(sub_mgr, websocket,
+                                             executor, **options)
+            await subscription_server.handle()
+
+    ws_server = websockets.serve(websocket, 'localhost', TEST_PORT,
+                                 subprotocols=[GRAPHQL_SUBSCRIPTIONS])
+
+    app.add_task(ws_server)
 
     return app
 
