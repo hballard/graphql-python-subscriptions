@@ -16,11 +16,9 @@ from builtins import object
 from functools import wraps
 
 import queue
-import fakeredis
 import graphene
 import multiprocess
 import pytest
-import redis
 import requests
 from flask import Flask, request, jsonify
 from flask_graphql import GraphQLView

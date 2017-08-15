@@ -9,7 +9,7 @@ from promise import Promise
 
 from graphql_subscriptions import RedisPubsub, SubscriptionManager
 from graphql_subscriptions.subscription_manager.validation import (
-     SubscriptionHasSingleRootField)
+    SubscriptionHasSingleRootField)
 from graphql_subscriptions.executors.gevent import GeventExecutor
 from graphql_subscriptions.executors.asyncio import AsyncioExecutor
 

@@ -1,7 +1,6 @@
 from future import standard_library
 standard_library.install_aliases()
 from builtins import object
-import asyncio
 import pickle
 import sys
 
@@ -72,7 +71,6 @@ class RedisPubsub(object):
 
     def unsubscribe(self, sub_id):
         trigger_name, on_message_handler = self.subscriptions[sub_id]
-
         del self.subscriptions[sub_id]
 
         if PY3:

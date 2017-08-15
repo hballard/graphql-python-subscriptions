@@ -258,11 +258,6 @@ class SubscriptionServer(object):
                         graphql_sub_id_promise_handler).catch(
                             error_catch_handler)
 
-                # Promise from init statement (line 54)
-                # seems to reset between if statements
-                # not sure if this behavior is correct or
-                # not per promises A spec...need to
-                # investigate
                 non_local['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(
@@ -275,7 +270,6 @@ class SubscriptionServer(object):
                         self.unsubscribe(self.connection_subscriptions[sub_id])
                         del self.connection_subscriptions[sub_id]
 
-                # same rationale as above
                 non_local['on_init_resolve'](Promise.resolve(True))
 
                 self.connection_context['init_promise'].then(

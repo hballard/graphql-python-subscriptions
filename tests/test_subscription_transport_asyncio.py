@@ -16,11 +16,9 @@ from builtins import object
 from functools import wraps
 
 import queue
-import fakeredis
 import graphene
 import multiprocess
 import pytest
-import redis
 import requests
 import websockets
 from promise import Promise
