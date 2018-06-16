@@ -1,5 +1,6 @@
 # graphql-python-subscriptions
-#### (Work in Progress!)
+#### This repo is depricated (unless someone wants to take it over and update it to work with the current graphql-python [graphql-core](https://github.com/graphql-python/graphql-core) version).  Use [graphql-ws](https://github.com/graphql-python/graphql-ws) instead, which is part of the official [graphql-python](https://github.com/graphql-python) repo and has support for websockets and graphql-subscriptions baked in.
+
 A port of apollographql subscriptions for python, using gevent websockets and redis
 
 This is an implementation of graphql subscriptions in Python.  It uses the apollographql  [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws) and [graphql-subscriptions](https://github.com/apollographql/graphql-subscriptions) packages as its basis.  It currently implements a pubsub using [redis-py](https://github.com/andymccurdy/redis-py) and uses [gevent-websockets](https://bitbucket.org/noppo/gevent-websocket) for concurrency.  It also makes heavy use of [syrusakbary/promise](https://github.com/syrusakbary/promise) python implementation to mirror the logic in the apollo-graphql libraries.
